@@ -11,18 +11,24 @@ import type { InteractionId } from "./types";
 import { PointerController } from "./PointerController";
 import { createSky } from "./atmosphere";
 import { groundTexture } from "./terrain";
-import { HALL_LAYOUT, OFFERING_LAYOUT, LANTERN_LAYOUT } from "./layout";
+import {
+  HALL_LAYOUT,
+  OFFERING_LAYOUT,
+  EMA_LAYOUT,
+  TEMIZU_LAYOUT,
+} from "./layout";
 import { LanternGarden } from "./LanternGarden";
+import { EmaBoard } from "./EmaBoard";
 import { MultiplayerClient } from "./MultiplayerClient";
 import { RemotePlayer } from "./RemotePlayer";
 import type { Visitor } from "../shared/multiplayer";
 import { RITUAL_DURATION } from "./ritual";
 
 const APPROACH: Record<InteractionId, THREE.Vector3> = {
-  lantern: new THREE.Vector3(
-    LANTERN_LAYOUT.approach.x,
+  temizu: new THREE.Vector3(
+    TEMIZU_LAYOUT.approach.x,
     0,
-    LANTERN_LAYOUT.approach.z,
+    TEMIZU_LAYOUT.approach.z,
   ),
   offering: new THREE.Vector3(
     OFFERING_LAYOUT.ritual.x,
@@ -30,11 +36,12 @@ const APPROACH: Record<InteractionId, THREE.Vector3> = {
     OFFERING_LAYOUT.ritual.z,
   ),
   fortune: new THREE.Vector3(-7, 0, -0.2),
-  ema: new THREE.Vector3(7, 0, -1.7),
+  ema: new THREE.Vector3(EMA_LAYOUT.approach.x, 0, EMA_LAYOUT.approach.z),
 };
 
 export class Game {
   private lanternGarden = new LanternGarden();
+  private emaBoard = new EmaBoard();
   private scene = new THREE.Scene();
   private renderer: THREE.WebGLRenderer;
   private assets = new AssetLoader();
@@ -69,6 +76,8 @@ export class Game {
   private synchronizedRitual: number | null = null;
   private awaitingPrayer = 0;
   private marker = new THREE.Vector3();
+  /** Yaw the camera swings to on its own (cleared when the visitor drags). */
+  private cameraFocus: number | null = null;
   private onVisibility = () => {
     this.lastTime = 0;
     this.input.clear();
@@ -112,7 +121,7 @@ export class Game {
     this.renderer.domElement.setAttribute("role", "img");
     container.appendChild(this.renderer.domElement);
     this.scene.add(this.world.root, this.player.root, createSky());
-    this.scene.add(this.lanternGarden.root);
+    this.scene.add(this.lanternGarden.root, this.emaBoard.root);
     this.scene.add(new THREE.HemisphereLight("#dfebee", "#645e47", 1.65));
     const sun = new THREE.DirectionalLight("#ffeace", 3.1);
     sun.position.set(-12, 24, 10);
@@ -155,7 +164,10 @@ export class Game {
     this.pointer = new PointerController(
       this.renderer.domElement,
       (dx, dy) => {
-        if (!this.paused) this.camera.rotate(dx, dy);
+        if (!this.paused) {
+          this.cameraFocus = null;
+          this.camera.rotate(dx, dy);
+        }
       },
       (delta) => {
         if (!this.paused) this.zoom(delta);
@@ -186,6 +198,15 @@ export class Game {
       this.world.colliders,
       true,
     );
+    // Compile shaders and upload textures while the loading screen is still up,
+    // so the first visible frame is the finished shrine instead of a blank canvas.
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera.camera);
+    } catch {
+      // Older drivers without parallel compilation simply compile on first render.
+    }
+    if (this.disposed) return;
+    this.renderer.render(this.scene, this.camera.camera);
     this.ready = true;
     this.multiplayer = new MultiplayerClient({
       sample: () => ({
@@ -197,7 +218,7 @@ export class Game {
       onPresence: (presence) => this.callbacks.onPresence?.(presence),
       onProfile: (profile) => this.callbacks.onProfile?.(profile),
       onLanterns: (state) => {
-        this.lanternGarden.setLanterns(state.lanterns);
+        this.emaBoard.setEma(state.lanterns);
         this.callbacks.onLanterns?.(state);
       },
       onSelf: (player, reason) => this.receiveSelf(player, reason),
@@ -294,6 +315,7 @@ export class Game {
     this.lastTime = now;
     if (!document.hidden) {
       this.lanternGarden.update(dt);
+      this.emaBoard.update(dt);
       if (!this.paused) {
         if (this.synchronizedRitual !== null)
           this.player.synchronizeRitual(
@@ -305,7 +327,10 @@ export class Game {
             ),
           );
         const movement = this.input.update();
-        if (movement.lengthSq() > 0.01) this.pendingVisit = null;
+        if (movement.lengthSq() > 0.01) {
+          this.pendingVisit = null;
+          this.cameraFocus = null;
+        }
         this.player.update(dt, movement, true);
         this.world.update(dt);
       }
@@ -315,12 +340,17 @@ export class Game {
           this.multiplayer?.serverNow ?? Date.now(),
           this.player.root.position,
         );
+      // Look over the visitor's shoulder toward the basin during 手水.
+      if (this.player.state === "Purify" && !this.paused)
+        this.camera.ease(Math.PI - 0.55, dt);
+      // Beside the ema board, look past the 献灯 rack from the open side.
+      else if (this.cameraFocus !== null) this.camera.ease(this.cameraFocus, dt);
       this.camera.update(dt, this.player.root.position, this.world.colliders);
       this.destinationMarker.visible = this.player.navigating;
       this.interactions.update(
         this.player.root.position.x,
         this.player.root.position.z,
-        !this.paused && this.player.state !== "Pray",
+        !this.paused && !this.player.busy,
       );
       if (!this.paused && this.pendingVisit && !this.player.navigating) {
         const id = this.pendingVisit;
@@ -361,9 +391,11 @@ export class Game {
         const y =
           point.id === "offering"
             ? 3.5 * HALL_LAYOUT.scale.y
-            : point.id === "lantern"
-              ? 5.3
-              : 4.2;
+            : point.id === "ema"
+              ? 3.7
+              : point.id === "temizu"
+                ? 3.4
+                : 4.2;
         this.marker
           .set(point.position.x, y, point.position.z - 0.6)
           .project(this.camera.camera);
@@ -400,7 +432,7 @@ export class Game {
   }
 
   interact() {
-    if (!this.ready || this.paused || this.player.state === "Pray") return;
+    if (!this.ready || this.paused || this.player.busy) return;
     // Re-evaluate proximity for clicks that arrive between HUD updates.
     this.interactions.update(
       this.player.root.position.x,
@@ -412,8 +444,8 @@ export class Game {
     this.player.cancelNavigation();
     this.input.clear();
     switch (this.interactions.nearby) {
-      case "lantern":
-        this.callbacks.onLantern?.();
+      case "temizu":
+        this.player.purify(() => this.callbacks.onPurified?.());
         break;
       case "offering":
         this.input.clear();
@@ -431,6 +463,7 @@ export class Game {
         this.callbacks.onFortune();
         break;
       case "ema":
+        this.cameraFocus = -0.95;
         this.multiplayer?.activity("ema");
         this.callbacks.onEma();
         break;
@@ -438,7 +471,7 @@ export class Game {
   }
 
   private walkToPointer(x: number, y: number) {
-    if (!this.ready || this.paused || this.player.state === "Pray") return;
+    if (!this.ready || this.paused || this.player.busy) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointerPosition.set(
       ((x - rect.left) / rect.width) * 2 - 1,
@@ -464,7 +497,7 @@ export class Game {
   }
 
   visit(id: InteractionId) {
-    if (!this.ready || this.paused || this.player.state === "Pray") return;
+    if (!this.ready || this.paused || this.player.busy) return;
     this.input.clear();
     this.pendingVisit = null;
     this.player.cancelNavigation();
@@ -497,6 +530,7 @@ export class Game {
   }
   reset() {
     this.input.clear();
+    this.cameraFocus = null;
     this.awaitingPrayer = 0;
     this.player.cancelNavigation();
     if (!this.multiplayer?.reset()) {
@@ -521,7 +555,7 @@ export class Game {
       this.multiplayer?.hangLantern(productId, wish, signature, slot) ??
       Promise.resolve({
         ok: false,
-        message: "境内につながると、灯籠をかけられます。",
+        message: "境内につながると、絵馬を掛けられます。",
       })
     );
   }
@@ -530,7 +564,16 @@ export class Game {
       this.multiplayer?.removeLantern(id) ??
       Promise.resolve({
         ok: false,
-        message: "境内につながると、ご自身の灯籠を確認できます。",
+        message: "境内につながると、ご自身の絵馬を確認できます。",
+      })
+    );
+  }
+  reportLantern(id: string) {
+    return (
+      this.multiplayer?.reportLantern(id) ??
+      Promise.resolve({
+        ok: false,
+        message: "境内につながると、お知らせを送れます。",
       })
     );
   }
@@ -540,6 +583,7 @@ export class Game {
     this.disposed = true;
     this.multiplayer?.dispose();
     this.lanternGarden.dispose();
+    this.emaBoard.dispose();
     for (const visitor of this.visitors.values()) visitor.dispose();
     this.visitors.clear();
     cancelAnimationFrame(this.frameId);

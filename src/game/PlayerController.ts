@@ -4,10 +4,16 @@ import type { CameraController } from "./CameraController";
 import { createTraveler } from "./character";
 import type { Collider, PlayerState } from "./types";
 import { canOccupy } from "./collision";
-import { ALIGN_DURATION, ritualFrame, RITUAL_DURATION } from "./ritual";
+import {
+  ALIGN_DURATION,
+  ritualFrame,
+  RITUAL_DURATION,
+  temizuFrame,
+  TEMIZU_DURATION,
+} from "./ritual";
 import { findPath } from "./navigation";
 import { PLAYER_SPAWN } from "./config";
-import { FORECOURT, OFFERING_LAYOUT } from "./layout";
+import { FORECOURT, OFFERING_LAYOUT, TEMIZU_LAYOUT } from "./layout";
 import type { Position } from "../shared/multiplayer";
 
 export class PlayerController {
@@ -38,6 +44,16 @@ export class PlayerController {
   private stalled = 0;
   private ritualTarget: Position = { ...OFFERING_LAYOUT.ritual, yaw: Math.PI };
   private tintMaterials: THREE.MeshStandardMaterial[] = [];
+  private onPurifyComplete?: () => void;
+  private purifyTime = 0;
+  private ladle = new THREE.Group();
+  private water: THREE.Mesh;
+  private cupPosition = new THREE.Vector3();
+
+  /** Praying or purifying: movement and other experiences wait. */
+  get busy() {
+    return this.state === "Pray" || this.state === "Purify";
+  }
 
   setTint(color: string) {
     if (!this.tintMaterials.length) {
@@ -92,7 +108,7 @@ export class PlayerController {
     return this.route.length > 0;
   }
   navigate(destination: THREE.Vector3) {
-    if (this.state === "Pray") return false;
+    if (this.busy) return false;
     this.route = findPath(this.root.position, destination, this.colliders);
     this.stalled = 0;
     return this.navigating;
@@ -122,6 +138,163 @@ export class PlayerController {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.13;
     this.root.add(ring);
+    // 柄杓: hidden until 手水. Handle runs along the forearm beyond the fist.
+    const bamboo = new THREE.MeshStandardMaterial({
+      color: "#c9b27a",
+      roughness: 0.8,
+    });
+    const handle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6),
+      bamboo,
+    );
+    handle.position.y = -0.2;
+    const cup = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.05, 0.075, 12, 1, true),
+      new THREE.MeshStandardMaterial({
+        color: "#d8c18a",
+        roughness: 0.8,
+        side: THREE.DoubleSide,
+      }),
+    );
+    cup.name = "LadleCup";
+    cup.rotation.x = Math.PI / 2;
+    cup.position.set(0, -0.42, 0.035);
+    this.ladle.add(handle, cup);
+    this.ladle.position.set(0, -0.31, 0.03);
+    this.ladle.visible = false;
+    this.water = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.02, 0.3, 8, 1, true),
+      new THREE.MeshStandardMaterial({
+        color: "#cfe6ea",
+        transparent: true,
+        opacity: 0.55,
+        roughness: 0.1,
+        depthWrite: false,
+      }),
+    );
+    this.water.visible = false;
+    this.root.add(this.water);
+  }
+
+  purify(onComplete: () => void) {
+    if (this.busy) return;
+    this.state = "Purify";
+    this.cancelNavigation();
+    this.purifyTime = 0;
+    this.startPosition.copy(this.root.position).setY(0);
+    this.startRotation = this.root.rotation.y;
+    this.onPurifyComplete = onComplete;
+    this.playAction("idle");
+    this.resetPose();
+  }
+
+  private holdLadle(hand: 0 | 1) {
+    const elbow = this.elbows[hand]!;
+    if (this.ladle.parent !== elbow) elbow.add(this.ladle);
+    this.ladle.visible = !this.imported;
+  }
+
+  private pour(amount: number) {
+    const cup = this.ladle.getObjectByName("LadleCup");
+    if (!cup || amount < 0.35 || !this.ladle.visible) {
+      this.water.visible = false;
+      return;
+    }
+    this.root.updateMatrixWorld(true);
+    cup.getWorldPosition(this.cupPosition);
+    this.root.worldToLocal(this.cupPosition);
+    this.water.visible = true;
+    this.water.position.set(
+      this.cupPosition.x,
+      this.cupPosition.y - 0.17,
+      this.cupPosition.z,
+    );
+  }
+
+  private updatePurify(dt: number) {
+    this.purifyTime += dt;
+    this.ritualProgress = Math.min(1, this.purifyTime / TEMIZU_DURATION);
+    const frame = temizuFrame(this.purifyTime);
+    this.ritualStep = frame.index;
+    const target = TEMIZU_LAYOUT.approach;
+    if (frame.kind === "align") {
+      const t = THREE.MathUtils.smoothstep(
+        this.purifyTime / ALIGN_DURATION,
+        0,
+        1,
+      );
+      this.root.position.set(
+        THREE.MathUtils.lerp(this.startPosition.x, target.x, t),
+        0,
+        THREE.MathUtils.lerp(this.startPosition.z, target.z, t),
+      );
+      const turn = Math.atan2(
+        Math.sin(-this.startRotation),
+        Math.cos(-this.startRotation),
+      );
+      this.root.rotation.y = this.startRotation + turn * t;
+      return;
+    }
+    this.root.position.set(target.x, 0, target.z);
+    this.root.rotation.y = 0;
+    this.resetPose();
+    const p = frame.phase;
+    const ease = Math.sin(Math.min(1, p * 1.6) * Math.PI * 0.5);
+    const tip = Math.sin(Math.min(1, Math.max(0, (p - 0.2) / 0.6)) * Math.PI);
+    this.torso.rotation.x = 0.22 * ease;
+    const [leftElbow, rightElbow] = this.elbows as [THREE.Group, THREE.Group];
+    if (frame.kind === "left" || frame.kind === "right") {
+      // The ladle hand pours over the other, outstretched hand.
+      const ladleRight = frame.kind === "left";
+      const ladleArm = ladleRight ? this.rightArm : this.leftArm;
+      const otherArm = ladleRight ? this.leftArm : this.rightArm;
+      const ladleElbow = ladleRight ? rightElbow : leftElbow;
+      const otherElbow = ladleRight ? leftElbow : rightElbow;
+      const inward = ladleRight ? -1 : 1;
+      this.holdLadle(ladleRight ? 1 : 0);
+      ladleArm.rotation.set(-0.8 * ease, 0, inward * 0.3 * ease);
+      ladleElbow.rotation.set(-0.75 * ease, inward * -0.9 * tip, 0);
+      otherArm.rotation.set(-0.7 * ease, 0, -inward * 0.25 * ease);
+      otherElbow.rotation.set(-0.45 * ease, 0, 0);
+      this.pour(tip);
+    } else if (frame.kind === "mouth") {
+      this.holdLadle(1);
+      const sip = THREE.MathUtils.smoothstep(p, 0.45, 0.7);
+      const back = 1 - THREE.MathUtils.smoothstep(p, 0.85, 1);
+      const pourTip = Math.sin(Math.min(1, Math.max(0, (p - 0.1) / 0.3)) * Math.PI);
+      this.rightArm.rotation.set(-0.8 * ease + sip * 0.3, 0, -0.3 * ease);
+      rightElbow.rotation.set(-0.75 * ease, 0.9 * pourTip, 0);
+      this.leftArm.rotation.set(
+        -0.7 * ease + sip * back * 0.05,
+        0,
+        0.25 * ease + sip * back * 0.1,
+      );
+      leftElbow.rotation.set(-0.45 * ease - sip * back * 1.55, 0, 0);
+      this.torso.rotation.x = 0.22 * ease - sip * back * 0.08;
+      this.pour(sip > 0.05 ? 0 : pourTip);
+    } else {
+      // Tip the ladle upright so the rest of the water rinses the handle.
+      this.holdLadle(1);
+      const lift = THREE.MathUtils.smoothstep(p, 0.1, 0.55);
+      this.rightArm.rotation.set(-0.8 * ease, 0, -0.2 * ease);
+      rightElbow.rotation.set(-0.75 * ease - lift * 0.8, 0, 0);
+      this.leftArm.rotation.set(-0.5 * ease, 0, 0.35 * ease);
+      leftElbow.rotation.set(-0.9 * ease, 0, 0);
+      this.pour(0);
+    }
+    if (frame.done) this.finishPurify(true);
+  }
+
+  private finishPurify(completed: boolean) {
+    this.ladle.visible = false;
+    this.water.visible = false;
+    if (this.state === "Purify") this.state = "Idle";
+    this.ritualStep = -1;
+    this.ritualProgress = 0;
+    this.resetPose();
+    const done = this.onPurifyComplete;
+    this.onPurifyComplete = undefined;
+    if (completed) done?.();
   }
 
   async init(assets: AssetLoader) {
@@ -162,7 +335,7 @@ export class PlayerController {
     elapsed = 0,
     from?: Position,
   ) {
-    if (this.state === "Pray") return;
+    if (this.busy) return;
     this.state = "Pray";
     this.cancelNavigation();
     this.ritualTime = elapsed;
@@ -182,6 +355,10 @@ export class PlayerController {
     this.mixer?.update(dt);
     if (this.state === "Pray") {
       this.updateRitual(dt);
+      return;
+    }
+    if (this.state === "Purify") {
+      this.updatePurify(dt);
       return;
     }
     if (input.lengthSq() > 0.01) this.cancelNavigation();
@@ -340,6 +517,7 @@ export class PlayerController {
 
   reset() {
     this.cancelNavigation();
+    this.finishPurify(false);
     this.state = "Idle";
     this.ritualStep = -1;
     this.ritualProgress = 0;

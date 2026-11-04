@@ -1,9 +1,8 @@
 import * as THREE from "three";
 import { LANTERN_LAYOUT as L } from "./layout";
-import { lanternProduct, type PublicLantern } from "../shared/lanterns";
 import { disposeObject } from "./geometry";
 
-/** A handful of instanced draws for all 24 hanging paper lanterns. */
+/** Decorative 献灯 rack: a handful of instanced draws for 26 hanging chochin. */
 export class LanternGarden {
   readonly root = new THREE.Group();
   private body: THREE.InstancedMesh;
@@ -13,7 +12,7 @@ export class LanternGarden {
   private seals: THREE.InstancedMesh;
   private dummy = new THREE.Object3D();
   private color = new THREE.Color();
-  private lanterns: PublicLantern[] = [];
+  private entries: { slot: number; color: string }[] = [];
   private time = 0;
   constructor() {
     this.root.position.set(L.x, 0, L.z);
@@ -92,7 +91,7 @@ export class LanternGarden {
         ctx.font = "76px serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("願", 64, 65);
+        ctx.fillText("献", 64, 65);
         label.map = new THREE.CanvasTexture(canvas);
         label.transparent = true;
         label.alphaTest = 0.1;
@@ -115,23 +114,20 @@ export class LanternGarden {
       mesh.receiveShadow = true;
       this.root.add(mesh);
     }
-    this.setLanterns([]);
-  }
-  setLanterns(lanterns: PublicLantern[]) {
-    this.lanterns = lanterns;
+    // Two welcome lights at the posts plus every slot, alternating white and red.
+    this.entries = [
+      { slot: -1, color: "#f4e7cf" },
+      { slot: -2, color: "#f4e7cf" },
+      ...Array.from({ length: L.columns * L.rows }, (_, slot) => ({
+        slot,
+        color: (slot + Math.floor(slot / L.columns)) % 2 ? "#f4e7cf" : "#e0866a",
+      })),
+    ];
     this.update(0);
   }
   update(dt: number) {
     this.time += dt;
-    // Two permanent welcome lights sit outside visitor slots.
-    const entries = [
-      { slot: -1, color: "#edbc78" },
-      { slot: -2, color: "#edbc78" },
-      ...this.lanterns.map((item) => ({
-        slot: item.slot,
-        color: lanternProduct(item.productId)!.color,
-      })),
-    ];
+    const entries = this.entries;
     this.body.count = this.cords.count = this.seals.count = entries.length;
     this.caps.count = entries.length * 2;
     this.ribs.count = entries.length * 7;
@@ -188,6 +184,6 @@ export class LanternGarden {
     this.root.removeFromParent();
     disposeObject(this.root, false);
     this.root.clear();
-    this.lanterns = [];
+    this.entries = [];
   }
 }

@@ -38,6 +38,7 @@ export function adminSnapshot(rooms: ShrineRooms, now: number) {
         room,
         visitorId: owners.get(ownerHash) ?? null,
         status: expiresAt > now ? "active" : "expired",
+        reports: rooms.lanterns.reportCount(id),
       }),
     );
   const activeCounts = new Map<string, number>(),
@@ -179,8 +180,8 @@ export function usersCsv(users: AdminUser[]) {
     "接続回数",
     "訪問回数",
     "参拝回数",
-    "掲灯中",
-    "累計掲灯数",
+    "掲示中の絵馬",
+    "累計掲示数",
     "おみくじ回数",
     "絵馬閲覧回数",
     "滞在時間（分）",

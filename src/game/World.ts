@@ -12,15 +12,18 @@ import {
   OFFERING_LAYOUT,
   FORECOURT,
   LANTERN_LAYOUT,
+  EMA_LAYOUT,
+  TEMIZU_LAYOUT,
 } from "./layout";
+import { EMA_ROW_BARS } from "./EmaBoard";
 
 export const MAP_SIZE = 30;
 export const INTERACTIONS: InteractionPoint[] = [
   {
-    id: "lantern",
-    position: LANTERN_LAYOUT.approach,
-    radius: 2.5,
-    label: "灯りをともす",
+    id: "temizu",
+    position: TEMIZU_LAYOUT.interaction,
+    radius: 2.3,
+    label: "手水で清める",
   },
   {
     id: "offering",
@@ -36,9 +39,9 @@ export const INTERACTIONS: InteractionPoint[] = [
   },
   {
     id: "ema",
-    position: { x: 7, z: -2.2 },
+    position: EMA_LAYOUT.interaction,
     radius: 2.5,
-    label: "絵馬を眺める",
+    label: "絵馬を書く",
   },
 ];
 const C = {
@@ -109,7 +112,7 @@ export class World {
         OFFERING_LAYOUT.scale,
       ),
       this.place("fortune", () => this.fortune(), -7, -2),
-      this.place("ema", () => this.ema(), 7, -3),
+      this.place("ema", () => this.ema(), EMA_LAYOUT.x, EMA_LAYOUT.z),
       ...[
         [-12, -11],
         [-12.5, -7],
@@ -154,7 +157,13 @@ export class World {
       OFFERING_LAYOUT.footprint.height,
     );
     this.collide(-7, -2, 3.2, 2, 3.5);
-    this.collide(7, -3, 4, 1.2, 3.5);
+    this.collide(
+      EMA_LAYOUT.x,
+      EMA_LAYOUT.z,
+      EMA_LAYOUT.width + 0.4,
+      EMA_LAYOUT.depth,
+      EMA_LAYOUT.height,
+    );
     this.collide(-3.6, 9, 0.65, 0.65, 5.5);
     this.collide(3.6, 9, 0.65, 0.65, 5.5);
     this.collide(
@@ -439,9 +448,24 @@ export class World {
     box(basin, [1.9, 0.05, 0.95], [0, 0.83, 0], "#789d91");
     box(basin, [2.6, 0.1, 0.16], [0, 0.98, 0.2], "#ac9b6a");
     cylinder(basin, 0.14, 0.14, 0.08, [0.6, 1.07, 0.2], "#d6bf8a");
-    basin.position.set(-7, 0, 6);
+    // 手水舎: four posts and a small roof over the basin.
+    for (const x of [-1.25, 1.25])
+      for (const z of [-0.75, 0.75]) {
+        const post = cylinder(basin, 0.09, 0.1, 2.6, [x, 1.3, z], C.dark, 12);
+        post.material = surface("wood", "#8d6f52");
+      }
+    for (const z of [-0.75, 0.75])
+      box(basin, [2.8, 0.14, 0.16], [0, 2.55, z], C.dark);
+    roof(basin, 3.4, 2.4, 2.6);
+    inscription(basin, "手水舎", [0, 2.42, 0.86], 0.9, 0.22);
+    basin.position.set(TEMIZU_LAYOUT.x, 0, TEMIZU_LAYOUT.z);
     this.root.add(basin);
-    this.collide(-7, 6, 2.5, 1.5);
+    this.collide(
+      TEMIZU_LAYOUT.x,
+      TEMIZU_LAYOUT.z,
+      TEMIZU_LAYOUT.width,
+      TEMIZU_LAYOUT.depth,
+    );
     for (const side of [-1, 1]) {
       const bench = group();
       box(bench, [2.8, 0.16, 0.75], [0, 0.65, 0], "#a18a60");
@@ -655,35 +679,30 @@ export class World {
     return g;
   }
 
+  /** Ema board frame. Visitor plaques are instanced by EmaBoard on the top rows. */
   private ema() {
     const g = group();
-    for (const x of [-1.7, 1.7]) box(g, [0.2, 2.6, 0.22], [x, 1.3, 0], C.dark);
-    for (const y of [1, 1.8, 2.5]) box(g, [3.6, 0.1, 0.16], [0, y, 0], C.wood);
-    for (let row = 0; row < 2; row++) {
-      for (let column = 0; column < 6; column++) {
-        const x = -1.35 + column * 0.53;
-        const y = 1.5 + row * 0.78;
-        const plaque = box(
-          g,
-          [0.35, 0.36, 0.06],
-          [x, y, 0.1],
-          column % 3 === 0 ? "#c18c5d" : "#d4b27a",
-        );
-        plaque.rotation.z = (this.random() - 0.5) * 0.24;
-        const wish = inscription(
-          g,
-          column % 2 === 0 ? "心願成就" : "家内安全",
-          [x, y, 0.146],
-          0.3,
-          0.2,
-          false,
-        );
-        wish.rotation.z = plaque.rotation.z;
-        cylinder(g, 0.012, 0.012, 0.2, [x, y + 0.25, 0.1], "#d4b27a", 4);
-      }
+    const half = EMA_LAYOUT.width / 2 + 0.1;
+    for (const x of [-half, half]) {
+      box(g, [0.2, 2.9, 0.22], [x, 1.45, 0], C.dark);
+      box(g, [0.42, 0.16, 0.5], [x, 0.08, 0], "#5b4632");
     }
-    inscription(g, "願いを結ぶ", [0, 2.7, 0.17], 1.9, 0.34);
-    roof(g, 4.2, 1.8, 3);
+    for (const y of [...EMA_ROW_BARS, 0.68])
+      box(g, [EMA_LAYOUT.width + 0.3, 0.07, 0.1], [0, y, 0], C.wood);
+    // A crowded lower row of offered ema keeps the board lively.
+    const wishes = ["心願成就", "家内安全", "学業成就", "無病息災", "良縁祈願"];
+    for (let i = 0; i < 9; i++) {
+      const x = -EMA_LAYOUT.width / 2 + 0.3 + i * ((EMA_LAYOUT.width - 0.6) / 8);
+      const y = 0.45;
+      const tilt = (this.random() - 0.5) * 0.24;
+      const plaque = box(g, [0.38, 0.3, 0.025], [x, y, 0.06], i % 3 ? "#d8b987" : "#caa575");
+      plaque.rotation.z = tilt;
+      const wish = inscription(g, wishes[i % wishes.length]!, [x, y, 0.08], 0.3, 0.17, false);
+      wish.rotation.z = tilt;
+    }
+    roundedBox(g, [1.7, 0.36, 0.08], [0, 2.82, 0.08], surface("wood", "#7a6248"), 0.02);
+    inscription(g, "絵馬掛所", [0, 2.82, 0.13], 1.5, 0.28);
+    roof(g, EMA_LAYOUT.width + 1, 1.6, 3.05);
     return g;
   }
 

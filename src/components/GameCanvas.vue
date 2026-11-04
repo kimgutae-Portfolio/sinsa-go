@@ -13,7 +13,7 @@ import type { VisitorSummary } from "../shared/visitorStats";
 const props = defineProps<{ paused: boolean }>();
 const emit = defineEmits<{
   profile: [profile: VisitorSummary];
-  lantern: [];
+  purified: [];
   lanterns: [state: LanternState];
   ready: [];
   update: [snapshot: GameSnapshot];
@@ -43,7 +43,7 @@ onMounted(async () => {
       onPresence: (presence) => emit("presence", presence),
       onProfile: (profile) => emit("profile", profile),
       onVisitors: (visitors) => emit("visitors", visitors),
-      onLantern: () => emit("lantern"),
+      onPurified: () => emit("purified"),
       onLanterns: (state) => emit("lanterns", state),
     });
     game.setPaused(props.paused);
@@ -80,6 +80,7 @@ defineExpose({
     slot: number | null,
   ) => game?.hangLantern(productId, wish, signature, slot),
   removeLantern: (id: string) => game?.removeLantern(id),
+  reportLantern: (id: string) => game?.reportLantern(id),
 });
 </script>
 <template>

@@ -3,8 +3,8 @@ import type { Presence } from "../shared/multiplayer";
 import type { LanternState } from "../shared/lanterns";
 import type { VisitorSummary } from "../shared/visitorStats";
 
-export type InteractionId = "offering" | "fortune" | "ema" | "lantern";
-export type PlayerState = "Idle" | "Walk" | "Pray";
+export type InteractionId = "temizu" | "offering" | "fortune" | "ema";
+export type PlayerState = "Idle" | "Walk" | "Pray" | "Purify";
 export interface Collider {
   minX: number;
   maxX: number;
@@ -34,7 +34,7 @@ export interface SceneLabel {
 }
 export interface GameCallbacks {
   onProfile?: (profile: VisitorSummary) => void;
-  onLantern?: () => void;
+  onPurified?: () => void;
   onLanterns?: (state: LanternState) => void;
   onUpdate: (snapshot: GameSnapshot) => void;
   onLabels: (labels: SceneLabel[]) => void;

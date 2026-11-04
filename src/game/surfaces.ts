@@ -146,8 +146,8 @@ export async function loadNaturalTextures() {
   await Promise.allSettled(
     (
       [
-        ["wood", "cedar-albedo.png"],
-        ["foliage", "evergreen-foliage.png"],
+        ["wood", "cedar-albedo.webp"],
+        ["foliage", "evergreen-foliage.webp"],
       ] as const
     ).map(async ([kind, file]) => {
       try {

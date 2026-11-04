@@ -15,8 +15,11 @@ import { AssetLoader } from "../src/game/AssetLoader";
 import { World } from "../src/game/World";
 import { PlayerController } from "../src/game/PlayerController";
 import { CameraController } from "../src/game/CameraController";
-import { LANTERN_LAYOUT } from "../src/game/layout";
+import { EMA_LAYOUT, TEMIZU_LAYOUT } from "../src/game/layout";
+import { EmaBoard } from "../src/game/EmaBoard";
 import { LanternGarden } from "../src/game/LanternGarden";
+import { REPORT_THRESHOLD, wishProblem } from "../src/shared/moderation";
+import { TEMIZU_DURATION } from "../src/game/ritual";
 import { disposeObject } from "../src/game/geometry";
 const owner = (name: string) => createHash("sha256").update(name).digest("hex");
 const hang = (
@@ -185,8 +188,8 @@ describe("lantern issuance and future paid phase", () => {
     );
   });
 });
-describe("lantern garden rendering and navigation", () => {
-  it("can reach the lantern stand from the entrance without crossing its frame", async () => {
+describe("ema board rendering and navigation", () => {
+  it("can reach the ema board from the entrance without crossing its frame", async () => {
     const assets = new AssetLoader();
     const world = new World(assets);
     await world.init();
@@ -195,9 +198,9 @@ describe("lantern garden rendering and navigation", () => {
       new CameraController(),
     );
     const target = new Vector3(
-      LANTERN_LAYOUT.approach.x,
+      EMA_LAYOUT.approach.x,
       0,
-      LANTERN_LAYOUT.approach.z,
+      EMA_LAYOUT.approach.z,
     );
     expect(player.navigate(target)).toBe(true);
     for (let i = 0; i < 1200 && player.navigating; i++)
@@ -224,7 +227,7 @@ describe("lantern garden rendering and navigation", () => {
         yaw: 0,
       };
       player.navigate(
-        new Vector3(LANTERN_LAYOUT.approach.x, 0, LANTERN_LAYOUT.approach.z),
+        new Vector3(EMA_LAYOUT.approach.x, 0, EMA_LAYOUT.approach.z),
       );
       for (let frame = 0; frame < 1200 && player.navigating; frame++) {
         player.update(1 / 60, new Vector2(), true);
@@ -245,10 +248,10 @@ describe("lantern garden rendering and navigation", () => {
     disposeObject(world.root);
     expect(blocked).toEqual([]);
   });
-  it("reuses instances as lanterns change and releases its own scene resources", () => {
-    const garden = new LanternGarden();
-    const children = garden.root.children.length;
-    garden.setLanterns([
+  it("reuses instances as ema change and releases its own scene resources", () => {
+    const board = new EmaBoard();
+    const children = board.root.children.length;
+    board.setEma([
       {
         id: "test",
         productId: "paper-sakura",
@@ -259,10 +262,93 @@ describe("lantern garden rendering and navigation", () => {
         expiresAt: now + 10000,
       },
     ]);
-    garden.update(1 / 60);
-    garden.setLanterns([]);
-    expect(garden.root.children.length).toBe(children);
-    garden.dispose();
-    expect(garden.root.children).toHaveLength(0);
+    board.update(1 / 60);
+    board.setEma([]);
+    expect(board.root.children.length).toBe(children);
+    board.dispose();
+    expect(board.root.children).toHaveLength(0);
+    const rack = new LanternGarden();
+    rack.update(1 / 60);
+    rack.dispose();
+    expect(rack.root.children).toHaveLength(0);
+  });
+  it("walks to the basin and plays the four temizu steps before finishing", async () => {
+    const assets = new AssetLoader();
+    const world = new World(assets);
+    await world.init();
+    const player = new PlayerController(world.colliders, new CameraController());
+    const target = new Vector3(TEMIZU_LAYOUT.approach.x, 0, TEMIZU_LAYOUT.approach.z);
+    expect(player.navigate(target)).toBe(true);
+    for (let i = 0; i < 1200 && player.navigating; i++)
+      player.update(1 / 60, new Vector2(), true);
+    expect(player.root.position.distanceTo(target)).toBeLessThan(0.15);
+    const done = vi.fn();
+    player.purify(done);
+    expect(player.busy).toBe(true);
+    expect(player.navigate(new Vector3(0, 0, 5))).toBe(false);
+    const steps = new Set<number>();
+    for (let t = 0; t < TEMIZU_DURATION + 0.2; t += 1 / 30) {
+      player.update(1 / 30, player.busy ? new Vector2(1, 0) : new Vector2(), true);
+      steps.add(player.ritualStep);
+    }
+    expect([...steps].filter((step) => step >= 0)).toEqual([0, 1, 2, 3]);
+    expect(done).toHaveBeenCalledOnce();
+    expect(player.state).toBe("Idle");
+    expect(player.root.position.distanceTo(target)).toBeLessThan(0.01);
+    assets.dispose();
+    disposeObject(player.root);
+    disposeObject(world.root);
+  });
+});
+describe("ema moderation", () => {
+  it("blocks contact details and abusive words but keeps ordinary wishes", () => {
+    for (const ok of [
+      "こころすこやかに過ごせますように",
+      "ほしねがい、叶いますように",
+      "2026年 合格しますように",
+      "부자 되게 해주세요",
+      "grape juice every day",
+    ])
+      expect(wishProblem(ok)).toBeNull();
+    for (const bad of ["死ね", "シネ", "line id: abc", "090-1234-5678", "www.example.com", "씨발", "f u c k"])
+      expect(wishProblem(bad)).not.toBeNull();
+  });
+  it("rejects filtered wishes on the server", async () => {
+    const service = new LanternService();
+    expect(
+      await service.execute({ ...hang(), wish: "連絡は www.example.com まで" }, now),
+    ).toMatchObject({ ok: false, code: "moderation" });
+  });
+  it("takes an ema down after enough distinct visitors report it", async () => {
+    const service = new LanternService();
+    await service.execute(hang("owner"), now);
+    const id = service.state("garden", owner("owner"), now).lanterns[0]!.id;
+    const report = (key: string) =>
+      service.execute(
+        { kind: "report", room: "garden", ownerHash: owner(key), requestId: `report_${key}_01`, id },
+        now,
+      );
+    expect(await report("owner")).toMatchObject({ ok: false, code: "own" });
+    for (let i = 1; i < REPORT_THRESHOLD; i++) {
+      expect(await report(`r${i}`)).toMatchObject({ ok: true, change: "none" });
+      expect(await report(`r${i}`)).toMatchObject({ ok: true, change: "none" });
+    }
+    expect(service.state("garden", "", now).lanterns).toHaveLength(1);
+    expect(service.reportCount(id)).toBe(REPORT_THRESHOLD - 1);
+    expect(await report("last")).toMatchObject({ ok: true, change: "removed" });
+    expect(service.state("garden", "", now).lanterns).toHaveLength(0);
+  });
+  it("lets the administrator take any ema down", async () => {
+    const service = new LanternService();
+    await service.execute(hang(), now);
+    const id = service.state("garden", "", now).lanterns[0]!.id;
+    expect(await service.execute({ kind: "moderate", id }, now)).toMatchObject({
+      ok: true,
+      change: "removed",
+    });
+    expect(await service.execute({ kind: "moderate", id }, now)).toMatchObject({
+      ok: false,
+      code: "not_found",
+    });
   });
 });

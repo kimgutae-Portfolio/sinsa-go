@@ -1,32 +1,28 @@
-/** Public product descriptions. Availability and issuance are enforced on the server. */
+/**
+ * Public ema designs. Internal ids keep the original "lantern" names so stored
+ * records stay compatible. Availability and issuance are enforced on the server.
+ */
 export const LANTERN_PRODUCTS = [
   {
     id: "paper-warm",
-    name: "こもれびの灯",
-    color: "#edbc78",
+    name: "木漏れ日",
+    color: "#e2b45c",
     subtitle: "あたたかな想いを込めて",
-    availability: "available",
+    availability: "available" as "available" | "planned",
   },
   {
     id: "paper-sakura",
-    name: "さくらの灯",
-    color: "#dfa6a0",
+    name: "桜",
+    color: "#d98d8b",
     subtitle: "やさしい願いを込めて",
-    availability: "available",
+    availability: "available" as "available" | "planned",
   },
   {
     id: "paper-leaf",
-    name: "若葉の灯",
-    color: "#b1c197",
+    name: "若葉",
+    color: "#8fa874",
     subtitle: "穏やかな一日を願って",
-    availability: "available",
-  },
-  {
-    id: "festival-gold",
-    name: "祭りの灯",
-    color: "#dbb65e",
-    subtitle: "特別な灯籠は準備中です",
-    availability: "planned",
+    availability: "available" as "available" | "planned",
   },
 ] as const;
 export type LanternProductId = (typeof LANTERN_PRODUCTS)[number]["id"];

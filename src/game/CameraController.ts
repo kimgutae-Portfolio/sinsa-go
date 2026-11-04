@@ -37,6 +37,16 @@ export class CameraController {
     this.updateBasis();
   }
 
+  /** Smoothly swing the view around the player toward a given yaw. */
+  ease(targetYaw: number, dt: number) {
+    const diff = Math.atan2(
+      Math.sin(targetYaw - this.yaw),
+      Math.cos(targetYaw - this.yaw),
+    );
+    this.yaw += diff * (1 - Math.exp(-3.5 * dt));
+    this.updateBasis();
+  }
+
   private updateBasis() {
     this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));

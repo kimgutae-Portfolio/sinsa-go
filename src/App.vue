@@ -4,7 +4,7 @@ import GameCanvas from "./components/GameCanvas.vue";
 import TouchJoystick from "./components/TouchJoystick.vue";
 import Icon from "./components/Icon.vue";
 import SoundControls from "./components/SoundControls.vue";
-import LanternPanel from "./components/LanternPanel.vue";
+import EmaPanel from "./components/EmaPanel.vue";
 import { FREE_LANTERN_POLICY, type LanternState } from "./shared/lanterns";
 import type { VisitorSummary } from "./shared/visitorStats";
 import type {
@@ -14,7 +14,7 @@ import type {
   VisitorLabel,
 } from "./game/types";
 import { drawFortune, type Fortune } from "./game/fortunes";
-import { RITUAL_STEPS } from "./game/ritual";
+import { RITUAL_STEPS, TEMIZU_STEPS } from "./game/ritual";
 import { PLAYER_SPAWN } from "./game/config";
 import {
   DEFAULT_ROOM,
@@ -108,18 +108,32 @@ watch(
   },
 );
 const labels = ref<SceneLabel[]>([]);
-const modal = ref<"help" | "fortune" | "ema" | "lantern" | null>(null);
+const modal = ref<"help" | "fortune" | "ema" | null>(null);
 const fortune = ref<Fortune>(drawFortune());
 const visited = ref<InteractionId[]>([]);
-const selected = ref<InteractionId>("offering");
+const selected = ref<InteractionId>("temizu");
 const toast = ref("");
 const dialog = ref<HTMLElement>();
 let previousFocus: HTMLElement | null = null;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 const places = [
   {
-    id: "offering" as const,
+    id: "temizu" as const,
     number: "01",
+    japanese: "手と口を清める",
+    title: "手水で清める",
+    description:
+      "鳥居をくぐって左手の手水舎で、参拝の前に手と口を清めます。柄杓で左手、右手、口、柄の順に清めます。",
+    icon: "water",
+    label: "手水舎",
+    subtitle: "てみずや",
+    action: "手水",
+    hint: "手と口を清める",
+    interaction: "手水で清める",
+  },
+  {
+    id: "offering" as const,
+    number: "02",
     japanese: "心を込めて、参拝",
     title: "心を込めて、参拝",
     description:
@@ -127,10 +141,13 @@ const places = [
     icon: "shrine",
     label: "拝殿",
     subtitle: "はいでん",
+    action: "参拝する",
+    hint: "二礼二拍手一礼",
+    interaction: "参拝する",
   },
   {
     id: "fortune" as const,
-    number: "02",
+    number: "03",
     japanese: "今日の運だめし",
     title: "おみくじを引く",
     description:
@@ -138,28 +155,23 @@ const places = [
     icon: "fortune",
     label: "おみくじ",
     subtitle: "今日の運だめし",
+    action: "おみくじ",
+    hint: "今日の運勢",
+    interaction: "おみくじを引く",
   },
   {
     id: "ema" as const,
-    number: "03",
+    number: "04",
     japanese: "小さな願いごと",
-    title: "絵馬を見る",
+    title: "絵馬を書く",
     description:
-      "拝殿の右手に絵馬掛けがあります。掛けられた願いをご覧いただけます。",
+      "拝殿の右手の絵馬掛所で、願いを書いた絵馬を掛けられます。同じ境内にいる方の絵馬も読めます。",
     icon: "ema",
     label: "絵馬",
     subtitle: "えま",
-  },
-  {
-    id: "lantern" as const,
-    number: "04",
-    japanese: "小さな願いに、灯りを",
-    title: "灯籠を掛ける",
-    description:
-      "右手の灯籠掛けで、願いを書いて灯籠を掛けられます。同じ境内にいる方と願いを共有します。現在は無料、今後は有料となる予定です。",
-    icon: "lantern",
-    label: "願いの灯",
-    subtitle: "願いの灯籠",
+    action: "絵馬",
+    hint: "願いを書く",
+    interaction: "絵馬を書く",
   },
 ];
 const selectedPlace = computed(() =>
@@ -167,17 +179,28 @@ const selectedPlace = computed(() =>
 );
 const interactionText = computed(
   () =>
-    ({
-      offering: "参拝する",
-      fortune: "おみくじを引く",
-      ema: "絵馬を眺める",
-      lantern: "灯りをともす",
-    })[snapshot.value.nearby ?? selected.value],
+    places.find((place) => place.id === (snapshot.value.nearby ?? selected.value))
+      ?.interaction,
+);
+/** Praying or purifying: the menus and movement wait. */
+const busy = computed(
+  () => snapshot.value.state === "Pray" || snapshot.value.state === "Purify",
+);
+const purifying = computed(() => snapshot.value.state === "Purify");
+const ritualSteps = computed(() =>
+  purifying.value
+    ? TEMIZU_STEPS.map((step) => ({ label: step.label, short: step.short }))
+    : RITUAL_STEPS.map((step) => ({
+        label: step.label,
+        short: step.kind === "bow" ? "礼" : "拍手",
+      })),
 );
 const ritualText = computed(() =>
   snapshot.value.ritualStep < 0
-    ? "参拝場所に向かっています"
-    : RITUAL_STEPS[snapshot.value.ritualStep]?.label,
+    ? purifying.value
+      ? "手水舎の前に立ちます"
+      : "参拝場所に向かっています"
+    : ritualSteps.value[snapshot.value.ritualStep]?.label,
 );
 function notify(message: string) {
   toast.value = message;
@@ -191,6 +214,11 @@ function prayed() {
   markVisited("offering");
   notify("心を込めて、お参りしました。どうぞよい一日を。");
   selected.value = "fortune";
+}
+function purified() {
+  markVisited("temizu");
+  notify("手と口を清めました。拝殿へ進みましょう。");
+  selected.value = "offering";
 }
 function openFortune() {
   fortune.value = drawFortune();
@@ -250,7 +278,20 @@ watch(modal, async (value, oldValue) => {
   else if (previousFocus?.isConnected) previousFocus.focus();
   else document.querySelector<HTMLButtonElement>(".help-button")?.focus();
 });
+// Escape still closes the dialog when focus fell back to the page (e.g. a form unmounted).
+function onWindowKey(event: KeyboardEvent) {
+  if (
+    event.key === "Escape" &&
+    modal.value &&
+    !dialog.value?.contains(document.activeElement)
+  ) {
+    event.preventDefault();
+    modal.value = null;
+  }
+}
+window.addEventListener("keydown", onWindowKey);
 onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onWindowKey);
   clearTimeout(toastTimer);
   clearTimeout(welcomeTimer);
 });
@@ -268,11 +309,11 @@ onBeforeUnmount(() => {
         @fortune="openFortune"
         @ema="openEma"
         @prayed="prayed"
+        @purified="purified"
         @notice="notify"
         @presence="presence = $event"
         @profile="profile = $event"
         @visitors="visitorLabels = $event"
-        @lantern="modal = 'lantern'"
         @lanterns="lanternState = $event"
       />
       <div class="scene-vignette" aria-hidden="true"></div>
@@ -376,8 +417,8 @@ onBeforeUnmount(() => {
                 <dd>{{ profile.prayerCount }}<small>回</small></dd>
               </div>
               <div>
-                <dt>灯した灯籠</dt>
-                <dd>{{ profile.lanternHangCount }}<small>灯</small></dd>
+                <dt>掛けた絵馬</dt>
+                <dd>{{ profile.lanternHangCount }}<small>枚</small></dd>
               </div>
             </dl>
             <small>境内で過ごした時間 {{ connectedTime }}</small>
@@ -452,7 +493,7 @@ onBeforeUnmount(() => {
               v-for="place in places"
               :key="place.id"
               :class="{ selected: selected === place.id }"
-              :disabled="snapshot.state === 'Pray'"
+              :disabled="busy"
               @click="visit(place.id)"
             >
               <Icon
@@ -473,7 +514,7 @@ onBeforeUnmount(() => {
           class="scene-label glass"
           :class="{ nearby: snapshot.nearby === label.id }"
           :style="{ left: `${label.x}px`, top: `${label.y}px` }"
-          :disabled="snapshot.state === 'Pray' || modal !== null"
+          :disabled="busy || modal !== null"
           :aria-label="`${labelName(label.id)}へ向かう`"
           @click="visit(label.id as InteractionId)"
         >
@@ -487,18 +528,20 @@ onBeforeUnmount(() => {
         <div class="interaction-dock">
           <Transition name="fade" mode="out-in">
             <div
-              v-if="snapshot.state === 'Pray'"
+              v-if="busy"
               class="ritual-card glass"
               key="praying"
               role="status"
             >
               <div class="ritual-heading">
-                <Icon name="shrine" :size="20" /><span>二礼二拍手一礼</span
+                <Icon :name="purifying ? 'water' : 'shrine'" :size="20" /><span>{{
+                  purifying ? "手水の作法" : "二礼二拍手一礼"
+                }}</span
                 ><small>{{ ritualText }}</small>
               </div>
               <div class="ritual-steps">
                 <span
-                  v-for="(step, index) in RITUAL_STEPS"
+                  v-for="(step, index) in ritualSteps"
                   :key="index"
                   :class="{
                     current: snapshot.ritualStep === index,
@@ -509,9 +552,7 @@ onBeforeUnmount(() => {
                     name="check"
                     :size="11"
                   /><template v-else>{{ index + 1 }}</template
-                  ><small>{{
-                    step.kind === "bow" ? "礼" : "拍手"
-                  }}</small></span
+                  ><small>{{ step.short }}</small></span
                 >
               </div>
               <div class="ritual-track">
@@ -552,7 +593,7 @@ onBeforeUnmount(() => {
           <button
             v-for="place in places"
             :key="place.id"
-            :disabled="snapshot.state === 'Pray' || modal !== null"
+            :disabled="busy || modal !== null"
             :class="{
               active:
                 snapshot.destination === place.id ||
@@ -567,34 +608,18 @@ onBeforeUnmount(() => {
                 v-if="visited.includes(place.id)"
                 class="completion-dot"
               ></span></span
-            ><span>{{
-              place.id === "offering"
-                ? "参拝する"
-                : place.id === "fortune"
-                  ? "おみくじ"
-                  : place.id === "lantern"
-                    ? "灯籠"
-                    : "絵馬"
-            }}</span
-            ><small>{{
-              place.id === "offering"
-                ? "二礼二拍手一礼"
-                : place.id === "fortune"
-                  ? "今日の運勢"
-                  : place.id === "lantern"
-                    ? "願いを灯す"
-                    : "願いを読む"
-            }}</small>
+            ><span>{{ place.action }}</span
+            ><small>{{ place.hint }}</small>
           </button>
         </nav>
         <div class="touch-controls">
           <TouchJoystick
-            :disabled="snapshot.state === 'Pray' || modal !== null"
+            :disabled="busy || modal !== null"
             @move="(x, y) => game?.touch(x, y)"
           /><button
             class="touch-action glass"
             :disabled="
-              !snapshot.nearby || snapshot.state === 'Pray' || modal !== null
+              !snapshot.nearby || busy || modal !== null
             "
             aria-label="近くの場所で体験する"
             @click="game?.interact()"
@@ -632,8 +657,7 @@ onBeforeUnmount(() => {
             class="modal-dialog"
             :class="{
               'fortune-dialog': modal === 'fortune',
-              'lantern-dialog': modal === 'lantern',
-              'ema-dialog': modal === 'ema',
+              'lantern-dialog': modal === 'ema',
             }"
             role="dialog"
             aria-modal="true"
@@ -648,8 +672,8 @@ onBeforeUnmount(() => {
             >
               <span>閉じる</span><Icon name="close" :size="16" />
             </button>
-            <LanternPanel
-              v-if="modal === 'lantern'"
+            <EmaPanel
+              v-if="modal === 'ema'"
               :state="lanternState"
               :connected="presence.state === 'connected'"
               :hang="
@@ -657,7 +681,8 @@ onBeforeUnmount(() => {
                   game?.hangLantern(productId, wish, signature, slot)
               "
               :remove="async (id) => game?.removeLantern(id)"
-              @placed="markVisited('lantern')"
+              :report="async (id) => game?.reportLantern(id)"
+              @placed="dialog?.focus()"
               @close="modal = null"
             />
             <template v-else-if="modal === 'help'">
@@ -678,7 +703,7 @@ onBeforeUnmount(() => {
                   <span>02</span>
                   <p>
                     <strong>参拝・授与所</strong
-                    >下のメニューから参拝・おみくじ・絵馬・灯籠を選ぶと、その場所へ歩いて向かいます。近くではEキーや画面のボタンでも体験できます。
+                    >下のメニューから手水・参拝・おみくじ・絵馬を選ぶと、その場所へ歩いて向かいます。近くではEキーや画面のボタンでも体験できます。
                   </p>
                 </div>
                 <div>
@@ -721,28 +746,6 @@ onBeforeUnmount(() => {
               </p>
               <button class="primary-button" @click="modal = null">
                 境内に戻る<Icon name="arrow" :size="17" />
-              </button>
-            </template>
-            <template v-else>
-              <div class="eyebrow">こもれび神社</div>
-              <h2 id="dialog-title">絵馬に託す願い</h2>
-              <p class="modal-intro">
-                絵馬掛けに寄せられた願いをご覧ください。
-              </p>
-              <div class="ema-wishes">
-                <blockquote>
-                  <span class="ema-category">家内安全</span>家族が健やかに暮らせますように。
-                </blockquote>
-                <blockquote>
-                  <span class="ema-category">学業成就</span>学びが実を結びますように。
-                </blockquote>
-                <blockquote>
-                  <span class="ema-category">無病息災</span>穏やかな日々が続きますように。
-                </blockquote>
-              </div>
-              <p class="fortune-footnote">展示用の絵馬です。実際の投稿ではありません。</p>
-              <button class="primary-button" @click="modal = null">
-                境内に戻る<Icon name="arrow" :size="18" />
               </button>
             </template>
           </section>

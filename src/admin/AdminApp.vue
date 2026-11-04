@@ -228,6 +228,24 @@ async function logout() {
     report(cause);
   }
 }
+async function takeDown(item: AdminLantern) {
+  if (
+    !window.confirm(
+      `この絵馬を外しますか？\n\n「${item.wish}」\n\n外した絵馬は元に戻せません。`,
+    )
+  )
+    return;
+  try {
+    await api(`lanterns/${encodeURIComponent(item.id)}/remove`, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrf.value },
+    });
+    error.value = "";
+    await loadTable();
+  } catch (cause) {
+    report(cause);
+  }
+}
 function selectTab(value: "users" | "lanterns") {
   tab.value = value;
   query.value = "";
@@ -293,9 +311,9 @@ onBeforeUnmount(() => {
       <span class="admin-brand"
         ><Icon name="shrine" :size="25" />こもれび神社</span
       >
-      <div class="admin-login-light"><Icon name="lantern" :size="115" /></div>
+      <div class="admin-login-light"><Icon name="ema" :size="115" /></div>
       <h1>小さな願いが、<br />集まる場所。</h1>
-      <p>訪れる人と、灯された願いを<br />静かに見守るための管理画面です。</p>
+      <p>訪れる人と、掛けられた願いを<br />静かに見守るための管理画面です。</p>
       <a href="/">神社に戻る <Icon name="arrow" :size="15" /></a>
     </div>
     <section class="admin-login-card" aria-labelledby="admin-login-title">
@@ -353,7 +371,7 @@ onBeforeUnmount(() => {
           :class="{ selected: tab === 'lanterns' }"
           @click="selectTab('lanterns')"
         >
-          <Icon name="lantern" :size="19" />灯籠一覧<Icon
+          <Icon name="ema" :size="19" />絵馬一覧<Icon
             name="chevron"
             :size="13"
           />
@@ -371,7 +389,7 @@ onBeforeUnmount(() => {
         <div>
           <span class="admin-kicker">こもれび神社 / 管理画面</span>
           <h1>境内のいまを、ひと目に。</h1>
-          <p>訪れる人と、灯された願いの記録。</p>
+          <p>訪れる人と、掛けられた願いの記録。</p>
         </div>
         <div class="admin-update">
           <span v-if="asOf">{{ date(asOf) }} 更新</span
@@ -409,13 +427,13 @@ onBeforeUnmount(() => {
           <p>完了した参拝を集計</p>
         </article>
         <article class="admin-lit-metric">
-          <span><Icon name="lantern" :size="17" />掲灯中の灯籠</span
+          <span><Icon name="ema" :size="17" />掲示中の絵馬</span
           ><strong
             >{{ number(overview?.totals.activeLanterns ?? 0)
-            }}<small>灯</small></strong
+            }}<small>枚</small></strong
           >
           <p>
-            記録開始後の累計 {{ number(overview?.totals.lanternsHung ?? 0) }} 灯
+            記録開始後の累計 {{ number(overview?.totals.lanternsHung ?? 0) }} 枚
           </p>
         </article>
       </div>
@@ -454,13 +472,13 @@ onBeforeUnmount(() => {
         <div class="admin-list-heading">
           <div>
             <h2>
-              {{ tab === "users" ? "ユーザーごとの記録" : "灯された願い" }}
+              {{ tab === "users" ? "ユーザーごとの記録" : "掛けられた願い" }}
             </h2>
             <p>
               {{
                 tab === "users"
-                  ? "接続・参拝・掲灯状況をまとめて確認できます。"
-                  : "現在保管されている灯籠の状態と願いを確認できます。"
+                  ? "接続・参拝・絵馬の掲示状況をまとめて確認できます。"
+                  : "現在保管されている絵馬の状態と願いを確認できます。"
               }}
             </p>
           </div>
@@ -472,7 +490,7 @@ onBeforeUnmount(() => {
           <div class="admin-search">
             <Icon name="pin" :size="16" /><input
               v-model="query"
-              :aria-label="tab === 'users' ? 'ユーザーを検索' : '灯籠を検索'"
+              :aria-label="tab === 'users' ? 'ユーザーを検索' : '絵馬を検索'"
               :placeholder="
                 tab === 'users'
                   ? 'ユーザーID・ルームで検索'
@@ -487,10 +505,10 @@ onBeforeUnmount(() => {
               <option value="online">接続中のみ</option>
               <option value="offline">オフラインのみ</option></select
             ><label class="admin-filter-check"
-              ><input v-model="onlyLit" type="checkbox" />掲灯中のみ</label
+              ><input v-model="onlyLit" type="checkbox" />掲示中のみ</label
             ></template
-          ><select v-else v-model="status" aria-label="灯籠の状態">
-            <option value="active">掲灯中</option>
+          ><select v-else v-model="status" aria-label="絵馬の状態">
+            <option value="active">掲示中</option>
             <option value="expired">期限切れ・保管中</option>
             <option value="all">すべての保管記録</option>
           </select>
@@ -526,7 +544,7 @@ onBeforeUnmount(() => {
                 </th>
                 <th>
                   <button @click="order('lanterns')">
-                    掲灯中
+                    掲示中
                     {{
                       sort === "lanterns"
                         ? direction === "desc"
@@ -536,7 +554,7 @@ onBeforeUnmount(() => {
                     }}
                   </button>
                 </th>
-                <th>累計掲灯</th>
+                <th>累計掲示</th>
                 <th>ルーム</th>
                 <th>
                   <button @click="order('lastSeen')">
@@ -585,10 +603,10 @@ onBeforeUnmount(() => {
                   <span
                     class="admin-count-badge"
                     :class="{ lit: user.activeLanternCount > 0 }"
-                    >{{ user.activeLanternCount }} 灯</span
+                    >{{ user.activeLanternCount }} 枚</span
                   >
                 </td>
-                <td>{{ user.lanternHangCount }} 灯</td>
+                <td>{{ user.lanternHangCount }} 枚</td>
                 <td>
                   <span class="admin-room-tag">{{ user.lastRoom }}</span>
                 </td>
@@ -608,12 +626,13 @@ onBeforeUnmount(() => {
           <table v-else>
             <thead>
               <tr>
-                <th>灯籠・願い</th>
+                <th>絵馬・願い</th>
                 <th>ユーザー</th>
                 <th>ルーム / 場所</th>
                 <th>状態</th>
-                <th>掲灯日時</th>
+                <th>掲示日時</th>
                 <th>期限</th>
+                <th>お知らせ</th>
               </tr>
             </thead>
             <tbody>
@@ -651,12 +670,26 @@ onBeforeUnmount(() => {
                     class="admin-count-badge"
                     :class="{ lit: item.status === 'active' }"
                     >{{
-                      item.status === "active" ? "掲灯中" : "期限切れ"
+                      item.status === "active" ? "掲示中" : "期限切れ"
                     }}</span
                   >
                 </td>
                 <td class="admin-date">{{ date(item.createdAt) }}</td>
                 <td class="admin-date">{{ date(item.expiresAt) }}</td>
+                <td>
+                  <span
+                    class="admin-count-badge"
+                    :class="{ reported: item.reports > 0 }"
+                    >{{ item.reports }} 件</span
+                  >
+                  <button
+                    v-if="item.status === 'active'"
+                    class="admin-text-button admin-take-down"
+                    @click="takeDown(item)"
+                  >
+                    外す
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -667,7 +700,7 @@ onBeforeUnmount(() => {
             class="admin-empty"
           >
             <Icon
-              :name="tab === 'users' ? 'users' : 'lantern'"
+              :name="tab === 'users' ? 'users' : 'ema'"
               :size="27"
             /><strong>{{
               loading ? "記録を読み込んでいます…" : "該当する記録はありません"
@@ -727,9 +760,9 @@ onBeforeUnmount(() => {
           ><strong>{{ detail.user.prayerCount }}<small>回</small></strong>
         </div>
         <div>
-          <span>掲灯中</span
+          <span>掲示中</span
           ><strong
-            >{{ detail.user.activeLanternCount }}<small>灯</small></strong
+            >{{ detail.user.activeLanternCount }}<small>枚</small></strong
           >
         </div>
         <div>
@@ -756,14 +789,14 @@ onBeforeUnmount(() => {
           </dd>
         </div>
         <div>
-          <dt>累計掲灯 / 取り下げ</dt>
+          <dt>累計掲示 / 取り下げ</dt>
           <dd>
-            {{ detail.user.lanternHangCount }} 灯 /
-            {{ detail.user.lanternRemoveCount }} 灯
+            {{ detail.user.lanternHangCount }} 枚 /
+            {{ detail.user.lanternRemoveCount }} 枚
           </dd>
         </div>
       </dl>
-      <h3>このユーザーの灯籠</h3>
+      <h3>このユーザーの絵馬</h3>
       <article
         v-for="item in detail.lanterns"
         :key="item.id"
@@ -772,21 +805,21 @@ onBeforeUnmount(() => {
         <span
           >{{ lanternProduct(item.productId)?.name }}
           <small>{{
-            item.status === "active" ? "掲灯中" : "期限切れ"
+            item.status === "active" ? "掲示中" : "期限切れ"
           }}</small></span
         >
         <blockquote>{{ item.wish }}</blockquote>
         <p>{{ item.room }} · {{ date(item.expiresAt) }} まで</p>
       </article>
       <p v-if="!detail.lanterns.length" class="admin-muted">
-        現在保管されている灯籠はありません。
+        現在保管されている絵馬はありません。
       </p>
       <h3>直近の記録 <small>最大30日分</small></h3>
       <div v-for="day in detail.daily" :key="day.day" class="admin-detail-day">
         <span>{{ day.day }}</span
         ><small
           >接続 {{ day.counters.connectionCount }} · 参拝
-          {{ day.counters.prayerCount }} · 掲灯
+          {{ day.counters.prayerCount }} · 絵馬
           {{ day.counters.lanternHangCount }}</small
         >
       </div>

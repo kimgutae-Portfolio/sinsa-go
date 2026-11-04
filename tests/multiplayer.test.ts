@@ -349,9 +349,10 @@ describe("real WebSocket multiplayer", () => {
         (m) => m.type === "lantern-result" && m.requestId === "request_far",
       ),
     ).toMatchObject({ ok: false, code: "too_far" });
-    await move(a, 1, 0, 2.5);
+    await move(a, 1, 0, 0.5);
     let seq = 2;
-    for (const x of [1.2, 2.4, 3.6, 4.8, 6, 7.4]) await move(a, seq++, x, 2.5);
+    for (const x of [1.2, 2.4, 3.6, 4.8, 6, 7]) await move(a, seq++, x, 0.5);
+    for (const z of [-0.6, -1.7]) await move(a, seq++, 7, z);
     const cursor = b.messages.length;
     a.send({
       type: "lantern-hang",

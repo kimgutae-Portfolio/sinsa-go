@@ -1,4 +1,10 @@
-import { HALL_LAYOUT, OFFERING_LAYOUT, LANTERN_LAYOUT } from "../game/layout";
+import {
+  HALL_LAYOUT,
+  OFFERING_LAYOUT,
+  LANTERN_LAYOUT,
+  EMA_LAYOUT,
+  TEMIZU_LAYOUT,
+} from "../game/layout";
 import type { LanternState } from "./lanterns";
 import type { VisitorSummary } from "./visitorStats";
 import { canOccupy } from "../game/collision";
@@ -49,6 +55,7 @@ export type ClientMessage =
       slot: number | null;
     }
   | { type: "lantern-remove"; requestId: string; id: string }
+  | { type: "lantern-report"; requestId: string; id: string }
   | {
       type: "state";
       seq: number;
@@ -167,14 +174,19 @@ export const STRUCTURAL_COLLIDERS: Collider[] = [
     OFFERING_LAYOUT.footprint.depth,
   ),
   rectangle(-7, -2, 3.2, 2),
-  rectangle(7, -3, 4, 1.2),
+  rectangle(EMA_LAYOUT.x, EMA_LAYOUT.z, EMA_LAYOUT.width + 0.4, EMA_LAYOUT.depth),
   rectangle(-3.6, 9, 0.65, 0.65),
   rectangle(3.6, 9, 0.65, 0.65),
   rectangle(-4.3, 5.6, 0.95, 0.95),
   rectangle(4.3, 5.6, 0.95, 0.95),
   rectangle(-4.1, -3.3, 0.95, 0.95),
   rectangle(4.1, -3.3, 0.95, 0.95),
-  rectangle(-7, 6, 2.5, 1.5),
+  rectangle(
+    TEMIZU_LAYOUT.x,
+    TEMIZU_LAYOUT.z,
+    TEMIZU_LAYOUT.width,
+    TEMIZU_LAYOUT.depth,
+  ),
   rectangle(-7, 10.8, 2.8, 0.75),
   rectangle(7, 10.8, 2.8, 0.75),
   rectangle(8.7, 6.5, 5.2, 5.2),

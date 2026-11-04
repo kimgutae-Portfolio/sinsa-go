@@ -309,3 +309,36 @@
   .modal-enter-active .modal-dialog, .modal-leave-active .modal-dialog { transition: none; }
   .modal-enter-from .modal-dialog, .modal-leave-to .modal-dialog { transform: none; }
 }
+
+/* Ema preview: a wooden pentagon with the design's painted field and the wish in vertical ink. */
+.ema-preview { display: flex; flex-direction: column; align-items: center; height: 196px; filter: drop-shadow(0 10px 14px #6b4a2a2e); }
+.ema-cord { width: 2px; height: 20px; background: linear-gradient(#b63a2a, #8f2c20); }
+.ema-plaque {
+  position: relative; width: 150px; height: 168px; margin-top: -2px;
+  clip-path: polygon(0 26%, 50% 0, 100% 26%, 100% 100%, 0 100%);
+  background:
+    repeating-linear-gradient(92deg, #0000 0 9px, #8c643a14 10px, #0000 12px),
+    linear-gradient(160deg, #e4c99c, #cfa974);
+  display: grid; grid-template-rows: 58px 1fr; justify-items: center; padding: 22px 10px 10px;
+}
+.ema-picture {
+  width: 108px; height: 46px; border-radius: 2px; background: var(--ema-color);
+  display: grid; place-items: center; font-family: var(--shrine-mincho); font-size: 26px; color: #3b2a1dd9;
+  box-shadow: inset 0 0 0 2px #fff6, inset 0 0 12px #5a3b1a22;
+}
+.ema-writing {
+  margin: 6px 0 0; writing-mode: vertical-rl; font-family: var(--shrine-mincho); color: #2f241a;
+  font-size: 13px; line-height: 1.55; letter-spacing: .06em; max-height: 88px; overflow: hidden; overflow-wrap: anywhere;
+}
+.ema-name { position: absolute; left: 12px; bottom: 9px; writing-mode: vertical-rl; font-family: var(--shrine-mincho); font-size: 10px; color: #4a3a2a; max-height: 70px; overflow: hidden; }
+.ema-problem { margin: -2px 0 2px; color: var(--shrine-red); font-size: 12px; line-height: 1.7; }
+.ema-report { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--shrine-line); color: var(--shrine-secondary); font-size: 11px; }
+.ema-report button { background: transparent; border: 1px solid var(--shrine-line); border-radius: 1px; color: var(--shrine-ink); font-size: 11px; min-height: 32px; padding: 4px 10px; }
+.ema-report .ema-report-open { display: inline-flex; align-items: center; gap: 5px; border: none; padding: 4px 0; color: var(--shrine-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.lantern-designs:has(> button:nth-child(3):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lantern-designs button i { border-radius: 1px; clip-path: polygon(0 28%, 50% 0, 100% 28%, 100% 100%, 0 100%); }
+@media (max-width: 700px) {
+  .ema-panel .lantern-preview-column { display: block; }
+  .ema-panel .ema-preview { height: 150px; transform: scale(.78); transform-origin: top center; margin-bottom: -4px; }
+  .ema-panel .lantern-slot-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}

@@ -319,7 +319,7 @@ export class MultiplayerClient {
       pending.resolve({
         ok: false,
         message:
-          "接続が変わりました。再接続後に、ご自身の灯籠をご確認ください。",
+          "接続が変わりました。再接続後に、ご自身の絵馬をご確認ください。",
       });
     }
     this.requests.clear();
@@ -333,12 +333,12 @@ export class MultiplayerClient {
           signature: string;
           slot: number | null;
         }
-      | { type: "lantern-remove"; id: string },
+      | { type: "lantern-remove" | "lantern-report"; id: string },
   ) {
     if (!this.connected)
       return Promise.resolve({
         ok: false,
-        message: "境内につながると、灯籠をかけられます。",
+        message: "境内につながると、絵馬を掛けられます。",
       });
     if (this.requests.size)
       return Promise.resolve({
@@ -352,7 +352,7 @@ export class MultiplayerClient {
         resolve({
           ok: false,
           message:
-            "応答を待っています。ご自身の灯籠を確認してから、もう一度お試しください。",
+            "応答を待っています。ご自身の絵馬を確認してから、もう一度お試しください。",
         });
       }, 10000);
       this.requests.set(requestId, { resolve, timer });
@@ -375,6 +375,9 @@ export class MultiplayerClient {
   }
   removeLantern(id: string) {
     return this.lanternRequest({ type: "lantern-remove", id });
+  }
+  reportLantern(id: string) {
+    return this.lanternRequest({ type: "lantern-report", id });
   }
   private publish() {
     this.callbacks.onPresence({

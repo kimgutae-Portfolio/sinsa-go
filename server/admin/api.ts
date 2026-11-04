@@ -121,6 +121,20 @@ export function createAdminApi(
           json(response, 200, { ok: true });
           return;
         }
+        const takeDown = /^\/api\/admin\/lanterns\/([^/]{1,64})\/remove$/.exec(path);
+        if (takeDown && request.method === "POST") {
+          if (request.headers["x-csrf-token"] !== session.csrfToken)
+            throw new RequestError(
+              403,
+              "画面を更新してから再度お試しください。",
+            );
+          const result = await rooms.moderateLantern(
+            decodeURIComponent(takeDown[1]!),
+          );
+          if (!result.ok) throw new RequestError(404, result.message);
+          json(response, 200, { ok: true, message: result.message });
+          return;
+        }
         if (request.method !== "GET")
           throw new RequestError(405, "この操作には対応していません。");
         const snapshot = adminSnapshot(rooms, now());

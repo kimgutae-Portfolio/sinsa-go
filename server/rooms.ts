@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { LanternService } from "./lanterns/service";
 import { VisitorStatsService } from "./visitors/service";
-import { LANTERN_LAYOUT } from "../src/game/layout";
+import { EMA_LAYOUT } from "../src/game/layout";
 import { WebSocket } from "ws";
 import {
   PROTOCOL_VERSION,
@@ -262,7 +262,11 @@ export class ShrineRooms {
       return;
     }
     this.advance(session, now);
-    if (data.type === "lantern-hang" || data.type === "lantern-remove") {
+    if (
+      data.type === "lantern-hang" ||
+      data.type === "lantern-remove" ||
+      data.type === "lantern-report"
+    ) {
       const task = this.changeLantern(session, data, now);
       this.pendingChanges.add(task);
       void task.finally(() => this.pendingChanges.delete(task));
@@ -397,6 +401,16 @@ export class ShrineRooms {
       player: { ...session.player },
     });
   }
+  /** Administrator take-down; refreshes every visitor in the ema's room. */
+  async moderateLantern(id: string) {
+    const record = this.lanterns.administration().find((item) => item.id === id);
+    const result = await this.lanterns.execute(
+      { kind: "moderate", id },
+      this.now(),
+    );
+    if (result.ok && record) this.broadcastLanterns(record.room);
+    return result;
+  }
   private sendLanterns(session: Session) {
     this.send(session.socket, {
       type: "lanterns",
@@ -438,11 +452,11 @@ export class ShrineRooms {
       data.type === "lantern-hang" &&
       (session.player.motion === "Pray" ||
         Math.hypot(
-          session.player.x - LANTERN_LAYOUT.approach.x,
-          session.player.z - LANTERN_LAYOUT.approach.z,
+          session.player.x - EMA_LAYOUT.approach.x,
+          session.player.z - EMA_LAYOUT.approach.z,
         ) > 2.8)
     ) {
-      reply("too_far", "灯籠をかける場所にもう少し近づいてください。");
+      reply("too_far", "絵馬掛けにもう少し近づいてください。");
       return;
     }
     const room = session.room;
@@ -459,7 +473,11 @@ export class ShrineRooms {
               signature: data.signature,
               slot: data.slot,
             }
-          : { ...shared, kind: "remove", id: data.id },
+          : {
+              ...shared,
+              kind: data.type === "lantern-report" ? "report" : "remove",
+              id: data.id,
+            },
         now,
       );
       if (session.room === room)
@@ -469,7 +487,7 @@ export class ShrineRooms {
           ...result,
         });
       if (result.ok) {
-        if (result.change !== "none")
+        if (result.change !== "none" && data.type !== "lantern-report")
           this.stats.record(
             session.ownerHash,
             result.change === "created"
@@ -483,7 +501,7 @@ export class ShrineRooms {
     } catch {
       reply(
         "storage",
-        "灯籠を保存できませんでした。しばらくしてからお試しください。",
+        "絵馬を保存できませんでした。しばらくしてからお試しください。",
       );
     } finally {
       session.lanternPending = false;

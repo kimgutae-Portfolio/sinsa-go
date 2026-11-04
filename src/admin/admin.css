@@ -1122,3 +1122,12 @@
     font-size: 8px;
   }
 }
+.admin-count-badge.reported {
+  background: #f3dcd4;
+  color: #8b3a2a;
+}
+.admin-take-down {
+  display: block;
+  margin-top: 6px;
+  color: #8b3a2a;
+}

@@ -425,4 +425,20 @@ describe("authenticated administrator API", () => {
       ),
     ).not.toContain("text/plain");
   });
+  it("takes an ema down only with a valid CSRF token", async () => {
+    const { cookie, session } = await login();
+    const before = await get<AdminPage<AdminLantern>>("lanterns", cookie);
+    const target = before.items[0]!;
+    expect(target.reports).toBe(0);
+    const remove = (token: string) =>
+      fetch(base + `/api/admin/lanterns/${target.id}/remove`, {
+        method: "POST",
+        headers: { Origin: base, Cookie: cookie, "X-CSRF-Token": token },
+      });
+    expect((await remove("wrong")).status).toBe(403);
+    expect((await remove(session.csrfToken!)).status).toBe(200);
+    expect((await remove(session.csrfToken!)).status).toBe(404);
+    const after = await get<AdminPage<AdminLantern>>("lanterns", cookie);
+    expect(after.items.some((item) => item.id === target.id)).toBe(false);
+  });
 });

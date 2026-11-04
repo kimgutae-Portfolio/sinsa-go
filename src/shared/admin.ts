@@ -9,6 +9,7 @@ export interface AdminLantern extends PublicLantern {
   room: string;
   visitorId: string | null;
   status: "active" | "expired";
+  reports: number;
 }
 export interface AdminOverview {
   asOf: number;
