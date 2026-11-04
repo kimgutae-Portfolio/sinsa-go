@@ -1,0 +1,311 @@
+/* Game overlays: paper, ink and a restrained vermilion accent. Admin keeps its own UI. */
+:root {
+  --shrine-paper: #f4f1e9;
+  --shrine-ink: #303730;
+  --shrine-secondary: #666b61;
+  --shrine-line: #cecabe;
+  --shrine-red: #8b4436;
+  --shrine-mincho: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --shrine-body: "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
+}
+.experience { color: var(--shrine-ink); }
+.experience .glass {
+  background: #f4f1e9ed;
+  color: var(--shrine-ink);
+  border: 1px solid #e4dfd3;
+  box-shadow: 0 3px 14px #171c1710;
+  backdrop-filter: none;
+}
+.experience :is(.shrine-identity, .experience-tools, .experience-actions) { border-radius: 4px; }
+.experience .experience-actions > button { color: #525a4d; border-radius: 2px; }
+.experience .experience-actions > button > span:not(.action-icon) { font-family: var(--shrine-mincho); font-size: 13px; letter-spacing: .08em; }
+.experience .experience-actions > button > small { color: var(--shrine-secondary); font-size: 9px; }
+.experience .experience-actions > button.active { background: #e6e2d7; }
+.experience .arrival-note { background: #f4f1e9e8; border-radius: 2px; }
+.experience :is(.interact-button, .walking-to, .ritual-card) { border-radius: 3px; }
+.experience .ritual-track > span { background: var(--shrine-red); }
+.experience .ritual-heading { color: var(--shrine-ink); }
+.experience[inert] :is(.experience-header, .experience-actions, .scene-label, .touch-controls, .movement-instruction, .arrival-note, .sound-controls, .interaction-dock, .experience-footnote, .shrine-guide, .room-panel, .visitor-name) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Keep the shrine in view. Only the paper itself is opaque. */
+.modal-backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 32px;
+  overflow: hidden;
+  background: #17201826;
+  backdrop-filter: none;
+  font-family: var(--shrine-body);
+  color: var(--shrine-ink);
+}
+.modal-dialog {
+  flex: 0 1 430px;
+  width: 430px;
+  max-width: 100%;
+  max-height: calc(100svh - 64px);
+  min-width: 0;
+  padding: 58px 34px 30px;
+  border: 1px solid #c9c3b5;
+  border-radius: 2px;
+  background: var(--shrine-paper);
+  background-image: none;
+  box-shadow: 0 12px 40px #131a1824;
+  text-align: left;
+  scrollbar-width: thin;
+  scrollbar-color: #bdb8aa transparent;
+  overscroll-behavior: contain;
+}
+.modal-dialog::before {
+  content: "";
+  position: absolute;
+  top: 21px;
+  left: 34px;
+  width: 22px;
+  height: 1px;
+  background: var(--shrine-red);
+}
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 9px;
+  width: auto;
+  height: 36px;
+  padding: 0 8px;
+  color: var(--shrine-secondary);
+  font-size: 11px;
+  border-radius: 0;
+  background: transparent;
+}
+.modal-close:hover { color: var(--shrine-ink); background: #e6e2d8; }
+.modal-dialog :is(.eyebrow, .lantern-panel > .eyebrow) {
+  display: flex;
+  justify-content: flex-start;
+  color: var(--shrine-red);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: .13em;
+  line-height: 1.7;
+}
+.modal-dialog h2 {
+  font-family: var(--shrine-mincho);
+  color: var(--shrine-ink);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+.modal-dialog :is(.modal-intro, .lantern-intro) {
+  color: var(--shrine-secondary);
+  font-size: 12px;
+  line-height: 2.05;
+  margin: 18px 0 28px;
+  letter-spacing: .025em;
+  overflow-wrap: anywhere;
+}
+.modal-dialog .primary-button {
+  min-height: 46px;
+  padding: 12px 17px;
+  border: 1px solid var(--shrine-ink);
+  border-radius: 2px;
+  background: var(--shrine-ink);
+  color: var(--shrine-paper);
+  font-family: var(--shrine-mincho);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: .09em;
+}
+.modal-dialog .primary-button:hover:not(:disabled) { background: #495044; }
+.modal-dialog :is(button, input, textarea, select):focus-visible,
+.experience :is(button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--shrine-red);
+  outline-offset: 3px;
+}
+.modal-dialog .help-list { margin: 0 0 28px; gap: 0; }
+.modal-dialog .help-list > div { padding: 19px 0; border-top: 1px solid var(--shrine-line); gap: 18px; }
+.modal-dialog .help-list > div > span { color: var(--shrine-red); font-family: var(--shrine-mincho); font-size: 12px; line-height: 2; }
+.modal-dialog .help-list strong { font-family: var(--shrine-mincho); font-size: 15px; color: var(--shrine-ink); letter-spacing: .06em; font-weight: 500; margin-bottom: 8px; }
+.modal-dialog .help-list p { color: var(--shrine-secondary); font-size: 12px; line-height: 2; }
+
+.fortune-dialog { flex-basis: 392px; width: 392px; border-top: 1px solid #c9c3b5; text-align: center; }
+.modal-dialog .eyebrow.fortune-caption { justify-content: space-between; font-family: var(--shrine-mincho); font-size: 12px; }
+.fortune-caption > span:last-child { writing-mode: vertical-rl; letter-spacing: .2em; border: 1px solid #8b443655; padding: 7px 5px; }
+.modal-dialog .fortune-title { color: var(--shrine-ink); font-size: 64px; font-weight: 500; letter-spacing: .2em; padding-left: .2em; margin: 6px 0 0; line-height: 1.4; }
+.fortune-reading { font-family: var(--shrine-mincho); font-size: 11px; letter-spacing: .16em; color: var(--shrine-secondary); }
+.fortune-rule { margin: 25px 0; height: 1px; }
+.fortune-rule > span { background: var(--shrine-line); }
+.fortune-dialog h3 { font-family: var(--shrine-mincho); color: var(--shrine-ink); font-size: 16px; line-height: 1.9; letter-spacing: .035em; margin: 0 0 14px; }
+.fortune-description { font-size: 12px; color: var(--shrine-secondary); line-height: 2.1; text-align: left; margin: 0 0 24px; }
+.fortune-details { border-color: var(--shrine-line); padding: 16px 0; gap: 15px; margin: 0; }
+.fortune-details > div { grid-template-columns: 68px minmax(0, 1fr); align-items: start; gap: 14px; }
+.fortune-details dt { font-size: 12px; color: var(--shrine-red); line-height: 1.9; letter-spacing: .03em; }
+.fortune-details dd { font-size: 12px; color: var(--shrine-ink); line-height: 1.9; }
+.modal-dialog .fortune-footnote { color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; margin: 22px 0; }
+.ema-wishes { margin: 0; gap: 0; border-bottom: 1px solid var(--shrine-line); }
+.ema-wishes blockquote {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  min-height: 112px;
+  padding: 22px 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--shrine-line);
+  border-radius: 0;
+  color: var(--shrine-ink);
+  font-size: 17px;
+  line-height: 2;
+}
+.ema-wishes blockquote .ema-category { font-family: var(--shrine-mincho); color: var(--shrine-red); writing-mode: vertical-rl; font-size: 11px; letter-spacing: .19em; margin: 0; justify-self: start; }
+
+/* Guide and visitor register share the same uncoated paper. */
+.experience :is(.shrine-guide, .room-panel) {
+  background: var(--shrine-paper);
+  border-radius: 2px;
+  border-color: #c9c3b5;
+  width: 330px;
+  padding: 22px;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.experience .guide-topline { color: var(--shrine-red); font-family: var(--shrine-mincho); font-size: 12px; letter-spacing: .1em; }
+.experience .guide-topline button { color: var(--shrine-secondary); width: 32px; height: 32px; border-radius: 0; }
+.experience :is(.shrine-guide, .room-panel) h2 { font-family: var(--shrine-mincho); font-size: 23px; font-weight: 500; color: var(--shrine-ink); letter-spacing: .04em; margin: 22px 0 14px; }
+.experience :is(.shrine-guide, .room-panel) h2 small { font-size: 11px; color: var(--shrine-secondary); }
+.experience :is(.shrine-guide, .room-panel) > p { font-size: 12px; line-height: 2; color: var(--shrine-secondary); }
+.experience .shrine-guide nav { gap: 0; }
+.experience .shrine-guide nav button { border-top: 1px solid var(--shrine-line); border-radius: 0; background: transparent; color: var(--shrine-ink); padding: 17px 0; font-family: var(--shrine-mincho); font-size: 13px; }
+.experience .shrine-guide nav button:hover { color: var(--shrine-red); background: transparent; }
+.experience .guide-footnote { color: var(--shrine-secondary); font-size: 11px; }
+.experience .visitor-list { border-top: 1px solid var(--shrine-line); padding-top: 17px; }
+.experience .visitor-list li { color: var(--shrine-ink); font-size: 12px; }
+.experience .visitor-list li small { color: var(--shrine-secondary); font-size: 10px; }
+.experience .visitor-history { background: transparent; border-color: var(--shrine-line); border-radius: 0; padding: 17px 0; }
+.experience .visitor-history-heading > span { font-family: var(--shrine-mincho); color: var(--shrine-ink); font-size: 14px; }
+.experience .visitor-history :is(dt, small) { color: var(--shrine-secondary); font-size: 10px; }
+.experience .visitor-history dd { color: var(--shrine-ink); font-family: var(--shrine-mincho); }
+.experience .invite-button { background: transparent; border: 1px solid var(--shrine-line); border-radius: 2px; font-size: 12px; color: var(--shrine-ink); }
+.experience .invite-button:hover { background: #e8e4d9; }
+.experience .room-form { border-color: var(--shrine-line); }
+.experience .room-form label { font-size: 12px; color: var(--shrine-ink); }
+.experience .room-form input { border-color: var(--shrine-line); border-radius: 1px; background: #faf8f2; color: var(--shrine-ink); font-size: 13px; }
+.experience .room-form button { border-radius: 1px; background: var(--shrine-ink); font-size: 12px; }
+.experience .room-form > small { color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; }
+
+/* Lantern writing desk: one sheet, with fields rather than stacked cards. */
+.lantern-dialog { flex-basis: 650px; width: 650px; max-width: 100%; padding: 58px 32px 28px; }
+.lantern-panel h2 { font-size: 28px; }
+.lantern-panel .lantern-intro { margin-bottom: 17px; }
+.lantern-policy { gap: 0 14px; margin: 0 0 26px; padding-bottom: 18px; border-bottom: 1px solid var(--shrine-line); }
+.lantern-policy span, .lantern-policy span:first-child { background: none; color: var(--shrine-secondary); border-radius: 0; font-size: 11px; line-height: 2; padding: 0; }
+.lantern-policy span:first-child { color: var(--shrine-red); }
+.lantern-content { grid-template-columns: 180px minmax(0, 1fr); gap: 28px; }
+.paper-lantern-preview { filter: none; height: 185px; }
+.lantern-board-heading { font-family: var(--shrine-mincho); color: var(--shrine-ink); font-size: 13px; }
+.lantern-board-heading small { font-family: var(--shrine-body); color: var(--shrine-secondary); font-size: 11px; }
+.lantern-slot-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
+.lantern-slot-grid button { background: transparent; border: 1px solid #d3cec2; border-radius: 1px; color: #8a8d7f; min-height: 25px; }
+.lantern-slot-grid button.occupied { background: #e5dac4; color: #765b32; }
+.lantern-slot-grid button.mine { box-shadow: inset 0 0 0 1px var(--shrine-red); }
+.lantern-slot-grid button.selected { border-color: var(--shrine-red); background: #ece3d5; color: var(--shrine-red); }
+.lantern-board-note { color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; text-align: left; }
+.lantern-form legend, .lantern-form > label:not(.lantern-consent) { color: var(--shrine-ink); font-size: 12px; }
+.lantern-designs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.lantern-designs button { min-height: 50px; flex-direction: row; gap: 8px; padding: 10px 5px; background: transparent; border-radius: 1px; border-color: var(--shrine-line); color: var(--shrine-ink); }
+.lantern-designs button.selected { border-color: var(--shrine-red); background: #ece5d9; }
+.lantern-designs button span { font-size: 10px; }
+.lantern-designs button i { height: 18px; width: 13px; flex-shrink: 0; }
+.lantern-designs button small { color: var(--shrine-secondary); }
+.lantern-form label small { color: var(--shrine-secondary); font-size: 10px; }
+.lantern-form textarea, .lantern-form > input { border-radius: 1px; border-color: var(--shrine-line); background: #faf8f2; color: var(--shrine-ink); font-size: 13px; padding: 11px; }
+.lantern-form textarea { font-family: var(--shrine-mincho); min-height: 116px; }
+.lantern-form textarea::placeholder, .lantern-form > input::placeholder { color: #7b7d71; }
+.lantern-form textarea:focus, .lantern-form > input:focus { outline-color: var(--shrine-red); }
+.lantern-consent { color: var(--shrine-secondary); font-size: 11px; line-height: 1.9; }
+.lantern-consent input { accent-color: var(--shrine-red); }
+.lantern-footer { color: var(--shrine-secondary); font-size: 10px; border-color: var(--shrine-line); text-align: left; }
+.lantern-return { display: flex; align-items: center; justify-content: flex-end; gap: 10px; width: 100%; min-height: 44px; margin-top: 14px; padding: 8px 0; background: transparent; color: var(--shrine-ink); font-family: var(--shrine-mincho); font-size: 13px; }
+.lantern-wish-card { color: var(--shrine-ink); }
+.lantern-wish-card blockquote { font-size: 22px; }
+.lantern-wish-card :is(p, small, .wish-signature) { color: var(--shrine-secondary); font-size: 12px; }
+.lantern-text-button, .lantern-remove { color: var(--shrine-red); border-color: var(--shrine-line); font-size: 12px; }
+.lantern-feedback, .lantern-feedback.success { color: var(--shrine-ink); background: #e8e3d6; border-left: 2px solid var(--shrine-red); border-radius: 0; font-size: 12px; }
+
+.sound-controls { position: absolute; top: max(94px, calc(env(safe-area-inset-top) + 70px)); right: 28px; z-index: 26; }
+.sound-trigger { display: flex; align-items: center; gap: 9px; border-radius: 2px; padding: 10px 14px; font-size: 11px; }
+.sound-meter { display: flex; align-items: center; gap: 2px; height: 14px; margin-left: 3px; }
+.sound-meter i { width: 2px; height: 8px; background: #66705d; }
+.sound-meter i:nth-child(2) { height: 13px; }
+.sound-meter i:nth-child(3) { height: 5px; }
+.experience .sound-panel { position: absolute; right: 0; top: 48px; width: 286px; border-radius: 2px; padding: 23px; max-height: calc(100svh - 170px); overflow-y: auto; background: var(--shrine-paper); border-color: #c9c3b5; }
+.sound-heading { display: flex; align-items: center; justify-content: space-between; color: var(--shrine-red); font-size: 11px; font-family: var(--shrine-mincho); letter-spacing: .1em; }
+.sound-heading button { display: grid; place-items: center; background: transparent; color: var(--shrine-secondary); padding: 7px; }
+.sound-panel h2 { font-family: var(--shrine-mincho); font-size: 23px; color: var(--shrine-ink); font-weight: 500; margin: 18px 0 12px; letter-spacing: .07em; }
+.sound-panel p { color: var(--shrine-secondary); font-size: 12px; line-height: 1.9; margin: 0 0 23px; }
+.sound-switch { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 44px; padding: 10px; border-radius: 1px; background: var(--shrine-ink); color: var(--shrine-paper); font-family: var(--shrine-mincho); font-size: 13px; }
+.sound-volume { display: flex; justify-content: space-between; font-size: 12px; margin-top: 23px; }
+.sound-panel input { width: 100%; height: 22px; margin: 14px 0 20px; accent-color: #58614f; cursor: pointer; touch-action: pan-y; }
+.sound-panel small { display: block; color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; }
+.sound-panel p.sound-status { color: var(--shrine-red); margin-bottom: 15px; }
+.modal-enter-active .modal-dialog, .modal-leave-active .modal-dialog { transition: transform .2s ease, opacity .2s ease; }
+.modal-enter-from .modal-dialog, .modal-leave-to .modal-dialog { transform: translateX(12px); }
+
+@media (max-width: 700px) {
+  .modal-backdrop { padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); align-items: center; justify-content: center; }
+  .modal-dialog { flex-basis: 100%; width: 100%; max-height: calc(100svh - max(14px, env(safe-area-inset-top)) - max(14px, env(safe-area-inset-bottom))); padding: 54px 25px 25px; }
+  .modal-dialog::before { left: 25px; }
+  .modal-dialog h2 { font-size: 25px; }
+  .modal-dialog .fortune-title { font-size: 56px; }
+  .modal-dialog .fortune-description { font-size: 12px; }
+  .fortune-details > div { grid-template-columns: 66px minmax(0, 1fr); }
+  .ema-wishes blockquote { font-size: 16px; min-height: 105px; }
+  .lantern-content { grid-template-columns: 1fr; gap: 24px; }
+  .lantern-preview-column { grid-template-columns: 75px minmax(0, 1fr); column-gap: 18px; }
+  .paper-lantern-preview { height: 145px; transform: scale(.67); }
+  .lantern-board-heading { margin-top: 0; }
+  .lantern-slot-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; }
+  .lantern-slot-grid button { padding: 3px; min-height: 24px; }
+  .lantern-board-note { font-size: 10px; }
+  .lantern-designs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lantern-designs button { min-height: 48px; }
+  .lantern-designs button span { font-size: 11px; }
+  .lantern-form textarea, .lantern-form > input, .experience .room-form input { font-size: 16px; }
+  .lantern-footer { font-size: 10px; }
+  .experience :is(.shrine-guide, .room-panel) { padding: 20px; max-height: calc(100svh - 110px); }
+  .sound-controls { top: max(77px, calc(env(safe-area-inset-top) + 59px)); right: 17px; }
+  .sound-trigger { padding: 9px 12px; font-size: 10px; }
+  .experience .sound-panel { width: min(286px, calc(100vw - 34px)); top: 46px; max-height: calc(100svh - 145px); }
+  .experience .experience-actions > button > span:not(.action-icon) { font-size: 11px; }
+  .experience .experience-actions > button { min-width: 66px; padding-left: 6px; padding-right: 6px; }
+  .experience .experience-actions > button > small { font-size: 7px; white-space: nowrap; }
+}
+@media (max-height: 600px) and (min-width: 701px) {
+  .modal-backdrop { padding: 18px; }
+  .modal-dialog { max-height: calc(100svh - 36px); }
+  .sound-controls { top: 78px; }
+  .experience .sound-panel { max-height: calc(100svh - 140px); }
+}
+@media (max-width: 380px) {
+  .experience-header { gap: 8px; }
+  .experience .shrine-identity { padding: 10px 9px; gap: 7px; }
+  .experience .shrine-identity b { font-size: 12px; letter-spacing: .07em; white-space: nowrap; }
+  .experience .shrine-identity div > span { display: none; }
+  .experience .shrine-identity > svg { width: 16px; }
+  .experience .presence-toggle > svg { display: none; }
+  .experience .experience-tools > button { width: 27px; }
+  .lantern-preview-column { grid-template-columns: 60px minmax(0, 1fr); column-gap: 14px; }
+  .lantern-slot-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .lantern-slot-grid button { min-width: 0; min-height: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-enter-active .modal-dialog, .modal-leave-active .modal-dialog { transition: none; }
+  .modal-enter-from .modal-dialog, .modal-leave-to .modal-dialog { transform: none; }
+}
