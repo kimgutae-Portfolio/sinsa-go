@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { AssetLoader } from "./AssetLoader";
 import type { CameraController } from "./CameraController";
-import { createTraveler } from "./character";
+import { createTraveler, prayTraveler, restTraveler, walkTraveler, TRAVELER_BODY_Y, TRAVELER_REST_HAND } from "./character";
 import type { Collider, PlayerState } from "./types";
 import { canOccupy } from "./collision";
 import {
@@ -25,8 +25,8 @@ export class PlayerController {
   private leftArm = new THREE.Group();
   private rightArm = new THREE.Group();
   private legs = [new THREE.Group(), new THREE.Group()];
-  private elbows = [new THREE.Group(), new THREE.Group()];
-  private knees = [new THREE.Group(), new THREE.Group()];
+  private hands = [new THREE.Group(), new THREE.Group()];
+  private parts = { torso: this.torso, leftArm: this.leftArm, rightArm: this.rightArm, legs: this.legs, hands: this.hands };
   private visual = new THREE.Group();
   private imported?: THREE.Group;
   private mixer?: THREE.AnimationMixer;
@@ -57,10 +57,7 @@ export class PlayerController {
 
   setTint(color: string) {
     if (!this.tintMaterials.length) {
-      const clones = new Map<
-        THREE.MeshStandardMaterial,
-        THREE.MeshStandardMaterial
-      >();
+      const owned = new Set<THREE.MeshStandardMaterial>();
       this.visual.traverse((object) => {
         if (
           !(object instanceof THREE.Mesh) ||
@@ -68,15 +65,9 @@ export class PlayerController {
           object.material.userData.role !== "jacket"
         )
           return;
-        const original = object.material;
-        let clone = clones.get(original);
-        if (!clone) {
-          clone = original.clone();
-          clones.set(original, clone);
-          this.tintMaterials.push(clone);
-        }
-        object.material = clone;
+        owned.add(object.material);
       });
+      this.tintMaterials.push(...owned);
     }
     this.tintMaterials.forEach((mat) => mat.color.set(color));
   }
@@ -138,16 +129,17 @@ export class PlayerController {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.13;
     this.root.add(ring);
-    // 柄杓: hidden until 手水. Handle runs along the forearm beyond the fist.
+    // 柄杓: hidden until 手水; sized for the mascot's small mitten hands.
+    this.ladle.name = "TemizuLadle";
     const bamboo = new THREE.MeshStandardMaterial({
       color: "#c9b27a",
       roughness: 0.8,
     });
     const handle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6),
+      new THREE.CylinderGeometry(0.012, 0.012, 0.28, 6),
       bamboo,
     );
-    handle.position.y = -0.2;
+    handle.position.y = -0.13;
     const cup = new THREE.Mesh(
       new THREE.CylinderGeometry(0.055, 0.05, 0.075, 12, 1, true),
       new THREE.MeshStandardMaterial({
@@ -158,10 +150,12 @@ export class PlayerController {
     );
     cup.name = "LadleCup";
     cup.rotation.x = Math.PI / 2;
-    cup.position.set(0, -0.42, 0.035);
+    cup.position.set(0, -0.28, 0.035);
     this.ladle.add(handle, cup);
-    this.ladle.position.set(0, -0.31, 0.03);
+    this.ladle.position.set(0, -0.03, 0.02);
     this.ladle.visible = false;
+    // Keep unused props in the owned scene so unmount can release them too.
+    this.root.add(this.ladle);
     this.water = new THREE.Mesh(
       new THREE.CylinderGeometry(0.012, 0.02, 0.3, 8, 1, true),
       new THREE.MeshStandardMaterial({
@@ -173,6 +167,7 @@ export class PlayerController {
       }),
     );
     this.water.visible = false;
+    this.water.name = "PurificationWater";
     this.root.add(this.water);
   }
 
@@ -189,9 +184,13 @@ export class PlayerController {
   }
 
   private holdLadle(hand: 0 | 1) {
-    const elbow = this.elbows[hand]!;
-    if (this.ladle.parent !== elbow) elbow.add(this.ladle);
-    this.ladle.visible = !this.imported;
+    if (this.imported) {
+      this.ladle.visible = false;
+      return;
+    }
+    const anchor = this.hands[hand]!;
+    if (this.ladle.parent !== anchor) anchor.add(this.ladle);
+    this.ladle.visible = true;
   }
 
   private pour(amount: number) {
@@ -239,47 +238,41 @@ export class PlayerController {
     this.root.rotation.y = 0;
     this.resetPose();
     const p = frame.phase;
-    const ease = Math.sin(Math.min(1, p * 1.6) * Math.PI * 0.5);
-    const tip = Math.sin(Math.min(1, Math.max(0, (p - 0.2) / 0.6)) * Math.PI);
-    this.torso.rotation.x = 0.22 * ease;
-    const [leftElbow, rightElbow] = this.elbows as [THREE.Group, THREE.Group];
+    const ease = Math.sin(p * Math.PI) ** 0.35;
+    const tip = Math.sin(THREE.MathUtils.clamp((p - 0.2) / 0.5, 0, 1) * Math.PI);
+    this.torso.rotation.x = 0.08 * ease;
+    // Move the soft mitten pieces directly; there are no arm or elbow chains.
+    const place = (index: 0 | 1, x: number, y: number, z: number) => {
+      const hand = index === 0 ? this.leftArm : this.rightArm;
+      hand.position.set(
+        THREE.MathUtils.lerp((index === 0 ? -1 : 1) * TRAVELER_REST_HAND.x, x, ease),
+        THREE.MathUtils.lerp(TRAVELER_REST_HAND.y, y, ease),
+        THREE.MathUtils.lerp(TRAVELER_REST_HAND.z, z, ease),
+      );
+    };
     if (frame.kind === "left" || frame.kind === "right") {
-      // The ladle hand pours over the other, outstretched hand.
-      const ladleRight = frame.kind === "left";
-      const ladleArm = ladleRight ? this.rightArm : this.leftArm;
-      const otherArm = ladleRight ? this.leftArm : this.rightArm;
-      const ladleElbow = ladleRight ? rightElbow : leftElbow;
-      const otherElbow = ladleRight ? leftElbow : rightElbow;
-      const inward = ladleRight ? -1 : 1;
-      this.holdLadle(ladleRight ? 1 : 0);
-      ladleArm.rotation.set(-0.8 * ease, 0, inward * 0.3 * ease);
-      ladleElbow.rotation.set(-0.75 * ease, inward * -0.9 * tip, 0);
-      otherArm.rotation.set(-0.7 * ease, 0, -inward * 0.25 * ease);
-      otherElbow.rotation.set(-0.45 * ease, 0, 0);
+      const right = frame.kind === "left";
+      const holding = right ? 1 : 0;
+      const receiving = right ? 0 : 1;
+      const side = right ? 1 : -1;
+      this.holdLadle(holding);
+      place(holding, side * 0.10, 0.43, 0.35);
+      place(receiving, -side * 0.07, 0.20, 0.58);
+      this.hands[holding]!.rotation.set(-1.1 * ease, 0, -side * 0.65 * tip);
       this.pour(tip);
     } else if (frame.kind === "mouth") {
       this.holdLadle(1);
-      const sip = THREE.MathUtils.smoothstep(p, 0.45, 0.7);
-      const back = 1 - THREE.MathUtils.smoothstep(p, 0.85, 1);
-      const pourTip = Math.sin(Math.min(1, Math.max(0, (p - 0.1) / 0.3)) * Math.PI);
-      this.rightArm.rotation.set(-0.8 * ease + sip * 0.3, 0, -0.3 * ease);
-      rightElbow.rotation.set(-0.75 * ease, 0.9 * pourTip, 0);
-      this.leftArm.rotation.set(
-        -0.7 * ease + sip * back * 0.05,
-        0,
-        0.25 * ease + sip * back * 0.1,
-      );
-      leftElbow.rotation.set(-0.45 * ease - sip * back * 1.55, 0, 0);
-      this.torso.rotation.x = 0.22 * ease - sip * back * 0.08;
-      this.pour(sip > 0.05 ? 0 : pourTip);
+      const sip = Math.sin(THREE.MathUtils.clamp((p - 0.35) / 0.55, 0, 1) * Math.PI);
+      place(1, 0.10, 0.43, 0.35);
+      place(0, -0.07 + sip * 0.04, 0.20 + sip * 0.36, 0.58 - sip * 0.15);
+      this.hands[1]!.rotation.set(-1.1 * ease, 0, -0.65 * tip);
+      this.pour(sip > 0.05 ? 0 : tip);
     } else {
-      // Tip the ladle upright so the rest of the water rinses the handle.
       this.holdLadle(1);
-      const lift = THREE.MathUtils.smoothstep(p, 0.1, 0.55);
-      this.rightArm.rotation.set(-0.8 * ease, 0, -0.2 * ease);
-      rightElbow.rotation.set(-0.75 * ease - lift * 0.8, 0, 0);
-      this.leftArm.rotation.set(-0.5 * ease, 0, 0.35 * ease);
-      leftElbow.rotation.set(-0.9 * ease, 0, 0);
+      const lift = Math.sin(p * Math.PI) ** 0.5;
+      place(1, 0.10, 0.50, 0.35);
+      place(0, -0.12, 0.23, 0.38);
+      this.hands[1]!.rotation.x = -1.1 * ease - lift * (Math.PI - 1.1);
       this.pour(0);
     }
     if (frame.done) this.finishPurify(true);
@@ -311,14 +304,7 @@ export class PlayerController {
   }
 
   private createCharacter() {
-    return createTraveler({
-      torso: this.torso,
-      leftArm: this.leftArm,
-      rightArm: this.rightArm,
-      legs: this.legs,
-      elbows: this.elbows,
-      knees: this.knees,
-    });
+    return createTraveler(this.parts);
   }
 
   private playAction(name: string) {
@@ -414,17 +400,7 @@ export class PlayerController {
           Math.cos(angle - this.root.rotation.y),
         ) * Math.min(1, dt * 14);
       this.walkTime += dt * 10;
-      this.legs[0]!.rotation.x = Math.sin(this.walkTime) * 0.5;
-      this.legs[1]!.rotation.x = -Math.sin(this.walkTime) * 0.5;
-      this.leftArm.rotation.x = -Math.sin(this.walkTime) * 0.35;
-      this.rightArm.rotation.x = Math.sin(this.walkTime) * 0.35;
-      this.knees[0]!.rotation.x = -Math.max(0, Math.sin(this.walkTime)) * 0.45;
-      this.knees[1]!.rotation.x = -Math.max(0, -Math.sin(this.walkTime)) * 0.45;
-      this.elbows[0]!.rotation.x =
-        -0.12 - Math.max(0, -Math.sin(this.walkTime)) * 0.2;
-      this.elbows[1]!.rotation.x =
-        -0.12 - Math.max(0, Math.sin(this.walkTime)) * 0.2;
-      this.torso.rotation.z = Math.sin(this.walkTime) * 0.018;
+      walkTraveler(this.parts, Math.sin(this.walkTime));
       this.visual.position.y =
         this.standingHeight + Math.abs(Math.sin(this.walkTime)) * 0.025;
       if (this.navigating) {
@@ -437,7 +413,7 @@ export class PlayerController {
     } else {
       this.resetPose();
       this.walkTime += dt * 2;
-      this.torso.position.y = 0.82 + Math.sin(this.walkTime) * 0.015;
+      this.torso.position.y = TRAVELER_BODY_Y + Math.sin(this.walkTime) * 0.01;
     }
   }
 
@@ -476,24 +452,13 @@ export class PlayerController {
       this.root.position.set(this.ritualTarget.x, 0, this.ritualTarget.z);
       this.root.rotation.y = Math.PI;
       this.resetPose();
-      if (frame.kind === "bow") {
-        const amount = Math.sin(frame.phase * Math.PI) ** 1.4;
-        this.torso.rotation.x = amount * 0.95;
-        if (this.imported) this.imported.rotation.x = amount * 0.65;
-        this.leftArm.rotation.x = -amount * 0.15;
-        this.rightArm.rotation.x = -amount * 0.15;
-      } else {
-        const lift = Math.sin(Math.PI * frame.phase) ** 0.4;
-        this.elbows.forEach((elbow) => (elbow.rotation.x = -lift * 0.35));
-        this.leftArm.rotation.x = -lift * 1.1;
-        this.rightArm.rotation.x = -lift * 1.1;
-        this.leftArm.rotation.z = lift * 0.6;
-        this.rightArm.rotation.z = -lift * 0.6;
-        // GLBs without a compatible skeleton get a subtle procedural clap pulse.
-        if (this.imported)
-          this.imported.rotation.x = Math.sin(frame.phase * Math.PI * 2) * 0.04;
+      prayTraveler(this.parts, frame);
+      if (this.imported) {
+        if (frame.kind === "bow") this.imported.rotation.x = Math.sin(frame.phase * Math.PI) ** 1.4 * 0.65;
+        else this.imported.rotation.x = Math.sin(frame.phase * Math.PI * 2) * 0.04;
       }
     }
+
     if (frame.done) {
       this.resetPose();
       this.state = "Idle";
@@ -504,14 +469,8 @@ export class PlayerController {
   }
 
   private resetPose() {
-    this.torso.rotation.set(0, 0, 0);
-    this.torso.position.y = 0.82;
+    restTraveler(this.parts);
     this.visual.position.y = this.standingHeight;
-    this.leftArm.rotation.set(0, 0, 0);
-    this.rightArm.rotation.set(0, 0, 0);
-    this.legs.forEach((leg) => leg.rotation.set(0, 0, 0));
-    this.knees.forEach((knee) => knee.rotation.set(0, 0, 0));
-    this.elbows.forEach((elbow) => elbow.rotation.set(-0.12, 0, 0));
     if (this.imported) this.imported.rotation.x = 0;
   }
 

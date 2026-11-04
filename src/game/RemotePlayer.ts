@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { createTraveler } from "./character";
+import { createTraveler, prayTraveler, restTraveler, walkTraveler } from "./character";
 import { FORECOURT } from "./layout";
 import { ritualFrame } from "./ritual";
 import type { Visitor } from "../shared/multiplayer";
@@ -11,8 +11,8 @@ export class RemotePlayer {
   private leftArm = new THREE.Group();
   private rightArm = new THREE.Group();
   private legs = [new THREE.Group(), new THREE.Group()];
-  private elbows = [new THREE.Group(), new THREE.Group()];
-  private knees = [new THREE.Group(), new THREE.Group()];
+  private hands = [new THREE.Group(), new THREE.Group()];
+  private parts = { torso: this.torso, leftArm: this.leftArm, rightArm: this.rightArm, legs: this.legs, hands: this.hands };
   private visual = new THREE.Group();
   private walkTime = 0;
   private frames: { time: number; player: Visitor }[] = [];
@@ -22,32 +22,14 @@ export class RemotePlayer {
     this.id = player.id;
     this.name = player.name;
     const rig = createTraveler(
-      {
-        torso: this.torso,
-        leftArm: this.leftArm,
-        rightArm: this.rightArm,
-        legs: this.legs,
-        elbows: this.elbows,
-        knees: this.knees,
-      },
+      this.parts,
       player.tint,
     );
     this.visual.add(rig);
     this.root.add(this.visual);
     this.root.position.set(player.x, 0, player.z);
     this.root.rotation.y = player.yaw;
-    // Each remote owns its materials, while fabric image textures remain shared.
-    const clones = new Map<THREE.Material, THREE.Material>();
-    this.root.traverse((object) => {
-      if (!(object instanceof THREE.Mesh) || Array.isArray(object.material))
-        return;
-      const mat = object.material;
-      if (mat.userData.surfaceKind) {
-        const copy: THREE.Material = clones.get(mat) ?? mat.clone();
-        clones.set(mat, copy);
-        object.material = copy;
-      }
-    });
+    // Plain clay materials belong to this avatar; no image textures are shared.
     const groups: THREE.Group[] = [];
     this.root.traverse((object) => {
       if (object instanceof THREE.Group) groups.push(object);
@@ -114,13 +96,7 @@ export class RemotePlayer {
       Math.cos(b.player.yaw - a.player.yaw),
     );
     this.root.rotation.y = a.player.yaw + turn * t;
-    this.torso.rotation.set(0, 0, 0);
-    this.torso.position.y = 0.82;
-    this.leftArm.rotation.set(0, 0, 0);
-    this.rightArm.rotation.set(0, 0, 0);
-    this.legs.forEach((leg) => leg.rotation.set(0, 0, 0));
-    this.elbows.forEach((arm) => arm.rotation.set(-0.12, 0, 0));
-    this.knees.forEach((knee) => knee.rotation.set(0, 0, 0));
+    restTraveler(this.parts);
     const { x, z } = this.root.position;
     const paved =
       (Math.abs(x) < 1.53 && z > -4.6) ||
@@ -134,27 +110,15 @@ export class RemotePlayer {
       const frame = ritualFrame(
         Math.max(0, (renderTime - player.ritualStartedAt) / 1000),
       );
-      if (frame.kind === "bow")
-        this.torso.rotation.x = Math.sin(frame.phase * Math.PI) ** 1.4 * 0.95;
-      else if (frame.kind === "clap") {
-        const lift = Math.sin(frame.phase * Math.PI) ** 0.4;
-        this.leftArm.rotation.set(-lift * 1.1, 0, lift * 0.6);
-        this.rightArm.rotation.set(-lift * 1.1, 0, -lift * 0.6);
-        this.elbows.forEach((elbow) => (elbow.rotation.x = -lift * 0.35));
-      }
+      prayTraveler(this.parts, frame);
     } else if (player.motion === "Walk") {
       this.walkTime += dt * 10;
       const phase = Math.sin(this.walkTime);
-      this.legs[0]!.rotation.x = phase * 0.5;
-      this.legs[1]!.rotation.x = -phase * 0.5;
-      this.leftArm.rotation.x = -phase * 0.35;
-      this.rightArm.rotation.x = phase * 0.35;
-      this.knees[0]!.rotation.x = -Math.max(0, phase) * 0.45;
-      this.knees[1]!.rotation.x = -Math.max(0, -phase) * 0.45;
+      walkTraveler(this.parts, phase);
       this.visual.position.y += Math.abs(phase) * 0.025;
     } else {
       this.walkTime += dt * 2;
-      this.torso.position.y += Math.sin(this.walkTime) * 0.015;
+      this.torso.position.y += Math.sin(this.walkTime) * 0.01;
     }
     const cast = this.root.position.distanceToSquared(local) < 100;
     this.root.traverse((object) => {

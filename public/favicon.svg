@@ -1,1 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#b8553d"/><path d="M8 12q16 5 32 0M9 21h30M16 16v22m16-22v22M23 17v4" fill="none" stroke="#fff5df" stroke-width="4"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>こもれび神社</title>
+  <rect width="64" height="64" rx="6" fill="#884738"/>
+  <g fill="#f4f0e6">
+    <path d="M10 15 Q32 23 54 15 L53 21 Q32 29 11 21 Z"/>
+    <path d="M20 23 H25 L23 53 H17 Z M39 23 H44 L47 53 H41 Z"/>
+    <path d="M13 29 H51 V34 H13 Z M30 23 H34 V29 H30 Z"/>
+  </g>
+</svg>

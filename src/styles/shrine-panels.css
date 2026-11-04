@@ -25,6 +25,14 @@
 .experience :is(.interact-button, .walking-to, .ritual-card) { border-radius: 3px; }
 .experience .ritual-track > span { background: var(--shrine-red); }
 .experience .ritual-heading { color: var(--shrine-ink); }
+/* A smaller traveler needs the center kept clear while hands and ladle move. */
+.experience .interaction-dock:has(.ritual-card) {
+  top: 150px;
+  right: 28px;
+  bottom: auto;
+  left: auto;
+  transform: none;
+}
 .experience[inert] :is(.experience-header, .experience-actions, .scene-label, .touch-controls, .movement-instruction, .arrival-note, .sound-controls, .interaction-dock, .experience-footnote, .shrine-guide, .room-panel, .visitor-name) {
   opacity: 0;
   pointer-events: none;
@@ -259,6 +267,13 @@
 .modal-enter-from .modal-dialog, .modal-leave-to .modal-dialog { transform: translateX(12px); }
 
 @media (max-width: 700px) {
+  .experience .interaction-dock:has(.ritual-card) {
+    top: 142px;
+    right: 17px;
+    left: 17px;
+    width: auto;
+    max-width: calc(100% - 34px);
+  }
   .modal-backdrop { padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); align-items: center; justify-content: center; }
   .modal-dialog { flex-basis: 100%; width: 100%; max-height: calc(100svh - max(14px, env(safe-area-inset-top)) - max(14px, env(safe-area-inset-bottom))); padding: 54px 25px 25px; }
   .modal-dialog::before { left: 25px; }

@@ -15,18 +15,18 @@ export const ROOM_CAPACITY = 12;
 export const DEFAULT_ROOM = "komorebi";
 export const NETWORK_HZ = 10;
 export const VISITOR_COLORS = [
-  "#d5d0bc",
-  "#b9c9b1",
-  "#c6bdad",
-  "#c6becf",
-  "#c6cba0",
-  "#b8c8cf",
-  "#d7bba6",
-  "#c2c8bf",
-  "#cdb6b6",
-  "#bfc3a2",
-  "#b0c8bb",
-  "#c8c0d5",
+  "#85866a",
+  "#78856c",
+  "#928671",
+  "#85818c",
+  "#8d9067",
+  "#75858b",
+  "#9b826e",
+  "#7e8980",
+  "#967e7a",
+  "#888a67",
+  "#728a7d",
+  "#8c8194",
 ];
 export type VisitorMotion = "Idle" | "Walk" | "Pray";
 export interface Position {

@@ -22,6 +22,7 @@
     "src/**/*.vue",
     "vite.config.ts",
     "tests/**/*.ts",
-    "server/**/*.ts"
+    "server/**/*.ts",
+    "branding/**/*.ts"
   ]
 }

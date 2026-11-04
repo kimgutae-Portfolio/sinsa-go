@@ -30,9 +30,16 @@ export function createShrineServer(
     ".json": "application/json",
     ".glb": "model/gltf-binary",
     ".mp3": "audio/mpeg",
+    ".webp": "image/webp",
+    ".ico": "image/vnd.microsoft.icon",
+    ".webmanifest": "application/manifest+json",
+    ".xml": "application/xml; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
   };
   const server = createServer(async (req, res) => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (/^\/admin(?:\/|$)/.test(pathname))
+      res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
     if (pathname === "/admin/") {
       res.writeHead(308, {
         Location: "/admin" + new URL(req.url ?? "/", "http://localhost").search,
@@ -87,7 +94,8 @@ export function createShrineServer(
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader(
         "Cache-Control",
-        target.includes(`${sep}assets${sep}`)
+        target.includes(`${sep}assets${sep}`) ||
+          (target.includes(`${sep}social${sep}`) && /-v\d+\.(jpg|png|webp)$/.test(target))
           ? "public, max-age=31536000, immutable"
           : "no-cache",
       );

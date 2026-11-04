@@ -286,7 +286,7 @@ describe("remote avatar", () => {
     remote.root.traverse((object) => {
       if (
         object instanceof Mesh &&
-        object.material.userData.surfaceKind === "fabric"
+        object.material.userData.role === "jacket"
       )
         owned = object;
     });
