@@ -5,8 +5,14 @@
 
 app = 'sinsa-go'
 primary_region = 'ams'
+kill_timeout = 30
 
 [build]
+
+[env]
+  PORT = '8080'
+  HOST = '0.0.0.0'
+  STORAGE_BACKEND = 'supabase'
 
 [http_service]
   internal_port = 8080
@@ -16,8 +22,14 @@ primary_region = 'ams'
   min_machines_running = 0
   processes = ['app']
 
+[[http_service.checks]]
+  grace_period = '90s'
+  interval = '30s'
+  timeout = '5s'
+  method = 'GET'
+  path = '/health'
+
 [[vm]]
-  memory = '1gb'
+  memory = '256mb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
