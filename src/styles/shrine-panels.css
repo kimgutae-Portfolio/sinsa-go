@@ -233,8 +233,6 @@
 .modal-dialog .omikuji-draw-status .omikuji-drawn-number { margin: 0 0 5px; font-size: 23px; line-height: 1.5; letter-spacing: .12em; color: var(--shrine-ink); }
 .modal-dialog .omikuji-draw-status .omikuji-drawing-label { color: var(--shrine-ink); font-size: 13px; }
 .omikuji-draw-actions { display: grid; gap: 2px; }
-.omikuji-sound { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; margin-bottom: 6px; padding: 4px 10px; border: 0; background: transparent; color: var(--shrine-secondary); font-family: var(--shrine-mincho); font-size: 11px; }
-.omikuji-sound:hover { color: var(--shrine-red); background: transparent; }
 .omikuji-draw-actions .primary-button { width: 100%; min-height: 48px; }
 .omikuji-draw-actions .primary-button:disabled { cursor: wait; opacity: .65; }
 .omikuji-return { min-height: 44px; padding: 8px 12px; border: 0; border-radius: 0; color: var(--shrine-secondary); background: transparent; font-family: var(--shrine-mincho); font-size: 11px; letter-spacing: .06em; }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ShrineAudio, type SoundSnapshot } from "../src/audio/ShrineAudio";
 import { OMIKUJI_REDUCED_SOUND_SECONDS, OMIKUJI_SOUND_SECONDS } from "../src/audio/OmikujiSound";
+import { TEMIZU_DURATION } from "../src/game/ritual";
 
 function setup(stored = "null", loader = vi.fn(async (_signal: AbortSignal) => new ArrayBuffer(8))) {
   class Visibility extends EventTarget { hidden = false; }
@@ -296,5 +297,44 @@ describe("omikuji sound with the shared shrine audio", () => {
     expect(s.sources[3]!.disconnect).toHaveBeenCalledOnce();
     s.audio.dispose();
     expect(s.sources[3]!.stop).toHaveBeenCalledOnce();
+  });
+});
+
+describe("temizu sound following the local ritual", () => {
+  it("shares the global sound switch and does not allocate audio for muted or expired rituals", async () => {
+    const s = setup();
+    s.audio.playTemizu();
+    s.audio.playTemizu(NaN);
+    s.audio.playTemizu(Infinity);
+    expect(s.createContext).not.toHaveBeenCalled();
+    await s.audio.setEnabled(true);
+    s.audio.playTemizu(TEMIZU_DURATION);
+    expect(s.sources).toHaveLength(1);
+    expect(s.buffers).toHaveLength(0);
+    s.audio.dispose();
+  });
+
+  it("starts at the current wash phase and resumes from a later phase using one cached buffer", async () => {
+    const s = setup();
+    await s.audio.setEnabled(true);
+    const cancel = s.audio.playTemizu(2.75);
+    s.advance(40);
+    await settle();
+    const first = s.sources[1]!;
+    expect(first.connect).toHaveBeenCalledWith(s.gain);
+    expect(first.start).toHaveBeenCalledWith(0, 2.79);
+    cancel();
+    expect(first.stop).toHaveBeenCalledOnce();
+    expect(first.buffer).toBeNull();
+    s.audio.playTemizu(5.5);
+    await settle();
+    expect(s.sources[2]!.start).toHaveBeenCalledWith(0, 5.5);
+    expect(s.buffers).toHaveLength(1);
+    expect(s.buffers[0]!.duration).toBeGreaterThanOrEqual(TEMIZU_DURATION);
+    expect(s.buffers[0]!.duration).toBeLessThan(TEMIZU_DURATION + 0.3);
+    s.changeVisibility(true);
+    expect(s.sources[2]!.stop).toHaveBeenCalledOnce();
+    expect(s.sources[2]!.buffer).toBeNull();
+    s.audio.dispose();
   });
 });

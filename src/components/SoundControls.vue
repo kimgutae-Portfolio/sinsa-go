@@ -43,7 +43,7 @@ onBeforeUnmount(() => {
           <button aria-label="音の設定を閉じる" @click="close"><Icon name="close" :size="17" /></button>
         </div>
         <h2>境内の音</h2>
-        <p>木々の風、小鳥、笛と鈴の音。</p>
+        <p>木々の風や小鳥の声と、手水・おみくじの音。</p>
         <button class="sound-switch" :aria-pressed="playing" @click="toggle">
           <Icon :name="playing ? 'muted' : 'sound'" :size="18" />
           {{ sound.enabled && !['blocked', 'error'].includes(sound.state) ? '音を休める' : '音を聴く' }}

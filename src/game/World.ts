@@ -63,6 +63,8 @@ export class World {
   private dummy = new THREE.Object3D();
   private elapsed = 0;
   private seed = 73;
+  private basinRipples: THREE.Mesh[] = [];
+  private basinStream?: THREE.Mesh;
 
   constructor(private assets: AssetLoader) {
     this.ground();
@@ -444,10 +446,50 @@ export class World {
     }
     // Hand-washing basin to the left of the entrance.
     const basin = group();
-    box(basin, [2.3, 0.7, 1.3], [0, 0.45, 0], "#a6aea0");
-    box(basin, [1.9, 0.05, 0.95], [0, 0.83, 0], "#789d91");
+    basin.name = "TemizuBasin";
+    const basinStone = surface("stone", "#a6aea0");
+    // An open stone bowl lets the ladle reach water rather than pass through a solid block.
+    roundedBox(basin, [2.3, 0.19, 1.3], [0, 0.22, 0], basinStone, 0.045);
+    for (const z of [-0.56, 0.56])
+      roundedBox(basin, [2.3, 0.53, 0.18], [0, 0.54, z], basinStone, 0.035);
+    for (const x of [-1.06, 1.06])
+      roundedBox(basin, [0.18, 0.53, 0.96], [x, 0.54, 0], basinStone, 0.035);
+    for (const z of [-0.56, 0.56])
+      roundedBox(basin, [2.37, 0.08, 0.22], [0, 0.82, z], basinStone, 0.028);
+    for (const x of [-1.075, 1.075])
+      roundedBox(basin, [0.22, 0.08, 0.96], [x, 0.82, 0], basinStone, 0.028);
+    const basinWater = new THREE.Mesh(new THREE.PlaneGeometry(1.94, 0.94), new THREE.MeshStandardMaterial({
+      color: "#759e93", emissive: "#476c61", emissiveIntensity: 0.12,
+      roughness: 0.17, metalness: 0.12, transparent: true, opacity: 0.91,
+    }));
+    basinWater.name = "TemizuBasinWater";
+    basinWater.userData.keepSeparate = true;
+    basinWater.rotation.x = -Math.PI / 2;
+    basinWater.position.y = 0.775;
+    basin.add(basinWater);
     box(basin, [2.6, 0.1, 0.16], [0, 0.98, 0.2], "#ac9b6a");
     cylinder(basin, 0.14, 0.14, 0.08, [0.6, 1.07, 0.2], "#d6bf8a");
+    const spout = cylinder(basin, 0.038, 0.042, 0.43, [0.55, 1.01, -0.035], "#aa9b67", 12);
+    spout.rotation.x = Math.PI / 2;
+    this.basinStream = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.014, 0.22, 8), new THREE.MeshBasicMaterial({
+      color: "#cbe3d6", transparent: true, opacity: 0.58, depthWrite: false,
+    }));
+    this.basinStream.name = "TemizuFreshWater";
+    this.basinStream.userData.keepSeparate = true;
+    this.basinStream.position.set(0.55, 0.89, -0.245);
+    basin.add(this.basinStream);
+    const rippleGeometry = new THREE.RingGeometry(0.045, 0.049, 28);
+    for (let i = 0; i < 3; i++) {
+      const ripple = new THREE.Mesh(rippleGeometry, new THREE.MeshBasicMaterial({
+        color: "#d4e9dc", transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false,
+      }));
+      ripple.name = "TemizuBasinRipple";
+      ripple.userData.keepSeparate = true;
+      ripple.rotation.x = -Math.PI / 2;
+      ripple.position.set(0.55, 0.779 + i * 0.0005, -0.245);
+      this.basinRipples.push(ripple);
+      basin.add(ripple);
+    }
     // 手水舎: four posts and a small roof over the basin.
     for (const x of [-1.25, 1.25])
       for (const z of [-0.75, 0.75]) {
@@ -742,6 +784,15 @@ export class World {
   update(dt: number) {
     this.elapsed += dt;
     updateBreeze(this.elapsed);
+    if (this.basinStream) {
+      const width = 0.94 + Math.sin(this.elapsed * 11) * 0.06;
+      this.basinStream.scale.set(width, 1, width);
+    }
+    this.basinRipples.forEach((ripple, i) => {
+      const phase = (this.elapsed * 0.65 + i / this.basinRipples.length) % 1;
+      ripple.scale.setScalar(0.5 + phase * 3.2);
+      (ripple.material as THREE.MeshBasicMaterial).opacity = (1 - phase) * 0.24;
+    });
     this.petalData.forEach((petal, i) => {
       petal.y -= dt * petal.speed;
       if (petal.y < 0.1) petal.y = 7;

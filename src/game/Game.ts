@@ -340,11 +340,9 @@ export class Game {
           this.multiplayer?.serverNow ?? Date.now(),
           this.player.root.position,
         );
-      // Look over the visitor's shoulder toward the basin during 手水.
-      if (this.player.state === "Purify" && !this.paused)
-        this.camera.ease(Math.PI - 0.55, dt);
+      this.camera.setTemizuView(this.player.state === "Purify" && !this.paused);
       // Beside the ema board, look past the 献灯 rack from the open side.
-      else if (this.cameraFocus !== null) this.camera.ease(this.cameraFocus, dt);
+      if (this.player.state !== "Purify" && this.cameraFocus !== null) this.camera.ease(this.cameraFocus, dt);
       this.camera.update(dt, this.player.root.position, this.world.colliders);
       this.destinationMarker.visible = this.player.navigating;
       this.interactions.update(
@@ -445,6 +443,7 @@ export class Game {
     this.input.clear();
     switch (this.interactions.nearby) {
       case "temizu":
+        this.cameraFocus = null;
         this.player.purify(() => this.callbacks.onPurified?.());
         break;
       case "offering":

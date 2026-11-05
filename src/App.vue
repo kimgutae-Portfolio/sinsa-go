@@ -15,7 +15,7 @@ import type {
   SceneLabel,
   VisitorLabel,
 } from "./game/types";
-import { RITUAL_STEPS, TEMIZU_STEPS } from "./game/ritual";
+import { RITUAL_STEPS, TEMIZU_STEPS, TEMIZU_DURATION } from "./game/ritual";
 import { PLAYER_SPAWN } from "./game/config";
 import {
   AUTO_ROOM,
@@ -224,6 +224,13 @@ const busy = computed(
 );
 const interactionBlocked = computed(() => busy.value || !!presence.value.switchingTo);
 const purifying = computed(() => snapshot.value.state === "Purify");
+const temizuSoundActive = computed(() => purifying.value && !modal.value && sound.value.enabled &&
+  ["playing", "loading"].includes(sound.value.state));
+let cancelTemizuSound: (() => void) | undefined;
+watch(temizuSoundActive, active => {
+  cancelTemizuSound?.();
+  cancelTemizuSound = active ? audio.playTemizu(snapshot.value.ritualProgress * TEMIZU_DURATION) : undefined;
+});
 const ritualSteps = computed(() =>
   purifying.value
     ? TEMIZU_STEPS.map((step) => ({ label: step.label, short: step.short }))
@@ -337,6 +344,7 @@ function onWindowKey(event: KeyboardEvent) {
 }
 window.addEventListener("keydown", onWindowKey);
 onBeforeUnmount(() => {
+  cancelTemizuSound?.();
   audio.dispose();
   window.removeEventListener("keydown", onWindowKey);
   clearTimeout(toastTimer);
@@ -522,7 +530,7 @@ onBeforeUnmount(() => {
           <p>木々のあいだから差す光の下で、ひと休み。</p>
         </div></Transition
       >
-      <div class="movement-instruction" :class="{ settled: !welcoming }">
+      <div v-show="!busy" class="movement-instruction" :class="{ settled: !welcoming }">
         <span class="desktop-instruction"
           >地面をクリックして歩く <i>·</i> ドラッグで見渡す
           <i>·</i> ホイールで距離を調節</span
@@ -568,7 +576,7 @@ onBeforeUnmount(() => {
       <template v-if="ready">
         <button
           v-for="label in labels"
-          v-show="label.visible"
+          v-show="label.visible && !busy"
           :key="label.id"
           class="scene-label glass"
           :class="{ nearby: snapshot.nearby === label.id }"
@@ -649,7 +657,7 @@ onBeforeUnmount(() => {
             </div>
           </Transition>
         </div>
-        <nav class="experience-actions glass" aria-label="境内でできること">
+        <nav v-show="!busy" class="experience-actions glass" aria-label="境内でできること">
           <button
             v-for="place in places"
             :key="place.id"
@@ -784,7 +792,6 @@ onBeforeUnmount(() => {
               :key="fortuneAttempt"
               ref="omikujiExperience"
               :audio="audio"
-              :sound="sound"
               @drawn="onFortuneDrawn"
               @close="modal = null"
             />

@@ -1,4 +1,6 @@
 import { createOmikujiSound } from "./OmikujiSound";
+import { createTemizuSound } from "./TemizuSound";
+import { TEMIZU_DURATION } from "../game/ritual";
 
 export type SoundState = "off" | "loading" | "playing" | "paused" | "blocked" | "error";
 export interface SoundSnapshot {
@@ -42,7 +44,7 @@ export class ShrineAudio {
   private gain?: GainNode;
   private ambienceGain?: GainNode;
   private effects = new Set<() => void>();
-  private effectBuffers = new Map<boolean, AudioBuffer>();
+  private effectBuffers = new Map<string, AudioBuffer>();
   private buffer?: AudioBuffer;
   private loading?: Promise<AudioBuffer>;
   private source?: AudioBufferSourceNode;
@@ -151,6 +153,14 @@ export class ShrineAudio {
   }
   /** Called by the draw gesture; a closed dialog must cancel even a pending resume. */
   playOmikujiDraw(reducedMotion = false): () => void {
+    return this.playEffect(`omikuji-${reducedMotion}`, rate => createOmikujiSound(rate, reducedMotion));
+  }
+  /** Joining midway uses the ritual's elapsed time, including after pause or mute. */
+  playTemizu(elapsed = 0): () => void {
+    if (!Number.isFinite(elapsed) || elapsed >= TEMIZU_DURATION) return () => {};
+    return this.playEffect("temizu", createTemizuSound, Math.max(0, elapsed));
+  }
+  private playEffect(key: string, synthesize: (rate: number) => Float32Array<ArrayBuffer>, elapsed = 0): () => void {
     const context = this.context;
     if (this.disposed || !this.settings.enabled || ["blocked", "error"].includes(this.settings.state) ||
         this.environment.visibility.hidden || !context || !this.gain)
@@ -175,13 +185,15 @@ export class ShrineAudio {
     try {
       // Resume during the press, independently of loading the background track.
       const resumed = context.resume();
-      let buffer = this.effectBuffers.get(reducedMotion);
+      let buffer = this.effectBuffers.get(key);
       if (!buffer) {
-        const samples = createOmikujiSound(context.sampleRate, reducedMotion);
+        const samples = synthesize(context.sampleRate);
         buffer = context.createBuffer(1, samples.length, context.sampleRate);
         buffer.copyToChannel(samples, 0);
-        this.effectBuffers.set(reducedMotion, buffer);
+        this.effectBuffers.set(key, buffer);
       }
+      if (elapsed >= buffer.duration) { cancel(); return cancel; }
+      const duration = buffer.duration;
       source = context.createBufferSource();
       source.buffer = buffer;
       source.connect(this.gain);
@@ -193,7 +205,9 @@ export class ShrineAudio {
           cancel();
           return;
         }
-        source?.start();
+        const offset = elapsed + Math.max(0, now() - requestedAt) / 1000;
+        if (offset >= duration) cancel();
+        else source?.start(0, offset);
       }).catch(cancel);
     } catch { cancel(); }
     return cancel;

@@ -48,7 +48,13 @@ export class PlayerController {
   private purifyTime = 0;
   private ladle = new THREE.Group();
   private water: THREE.Mesh;
+  private splash: THREE.Mesh;
+  private droplets: THREE.InstancedMesh;
+  private dropletDummy = new THREE.Object3D();
   private cupPosition = new THREE.Vector3();
+  private receivingPosition = new THREE.Vector3();
+  private streamDirection = new THREE.Vector3();
+  private readonly streamUp = new THREE.Vector3(0, 1, 0);
 
   /** Praying or purifying: movement and other experiences wait. */
   get busy() {
@@ -129,19 +135,19 @@ export class PlayerController {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.13;
     this.root.add(ring);
-    // 柄杓: hidden until 手水; sized for the mascot's small mitten hands.
+    // A readable bamboo ladle, held by the mascot's rigid mitten pieces.
     this.ladle.name = "TemizuLadle";
     const bamboo = new THREE.MeshStandardMaterial({
       color: "#c9b27a",
       roughness: 0.8,
     });
     const handle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.012, 0.012, 0.28, 6),
+      new THREE.CylinderGeometry(0.016, 0.019, 0.36, 10),
       bamboo,
     );
-    handle.position.y = -0.13;
+    handle.position.y = -0.17;
     const cup = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.05, 0.075, 12, 1, true),
+      new THREE.CylinderGeometry(0.092, 0.083, 0.105, 20, 1, true),
       new THREE.MeshStandardMaterial({
         color: "#d8c18a",
         roughness: 0.8,
@@ -150,25 +156,51 @@ export class PlayerController {
     );
     cup.name = "LadleCup";
     cup.rotation.x = Math.PI / 2;
-    cup.position.set(0, -0.28, 0.035);
+    cup.position.set(0, -0.35, 0.035);
+    const cupRim = new THREE.Mesh(new THREE.TorusGeometry(0.089, 0.008, 6, 24), bamboo);
+    cupRim.rotation.x = Math.PI / 2;
+    cupRim.position.y = 0.052;
+    const cupBottom = new THREE.Mesh(new THREE.CircleGeometry(0.083, 20), bamboo);
+    cupBottom.rotation.x = Math.PI / 2;
+    cupBottom.position.y = -0.052;
+    const cupWater = new THREE.Mesh(new THREE.CircleGeometry(0.080, 20), new THREE.MeshStandardMaterial({
+      color: "#9dc4bc", roughness: 0.16, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+    }));
+    cupWater.name = "LadleWater";
+    cupWater.rotation.x = -Math.PI / 2;
+    cupWater.position.y = 0.033;
+    cup.add(cupRim, cupBottom, cupWater);
     this.ladle.add(handle, cup);
     this.ladle.position.set(0, -0.03, 0.02);
     this.ladle.visible = false;
     // Keep unused props in the owned scene so unmount can release them too.
     this.root.add(this.ladle);
     this.water = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.012, 0.02, 0.3, 8, 1, true),
-      new THREE.MeshStandardMaterial({
-        color: "#cfe6ea",
+      new THREE.CylinderGeometry(0.010, 0.018, 1, 10, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: "#d6e8df",
         transparent: true,
-        opacity: 0.55,
-        roughness: 0.1,
+        opacity: 0.70,
         depthWrite: false,
       }),
     );
     this.water.visible = false;
     this.water.name = "PurificationWater";
     this.root.add(this.water);
+    const splashMaterial = new THREE.MeshBasicMaterial({
+      color: "#d9eee3", transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide,
+    });
+    this.splash = new THREE.Mesh(new THREE.RingGeometry(0.028, 0.041, 24), splashMaterial);
+    this.splash.name = "PurificationSplash";
+    this.splash.rotation.x = -Math.PI / 2;
+    this.splash.visible = false;
+    this.root.add(this.splash);
+    this.droplets = new THREE.InstancedMesh(new THREE.SphereGeometry(0.016, 8, 6), splashMaterial, 10);
+    this.droplets.name = "PurificationDroplets";
+    this.droplets.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.droplets.frustumCulled = false;
+    this.droplets.visible = false;
+    this.root.add(this.droplets);
   }
 
   purify(onComplete: () => void) {
@@ -193,21 +225,45 @@ export class PlayerController {
     this.ladle.visible = true;
   }
 
-  private pour(amount: number) {
+  private pour(amount: number, receiving: 0 | 1) {
     const cup = this.ladle.getObjectByName("LadleCup");
-    if (!cup || amount < 0.35 || !this.ladle.visible) {
+    if (!cup || amount < 0.02 || !this.ladle.visible) {
       this.water.visible = false;
+      this.splash.visible = false;
+      this.droplets.visible = false;
       return;
     }
     this.root.updateMatrixWorld(true);
     cup.getWorldPosition(this.cupPosition);
     this.root.worldToLocal(this.cupPosition);
+    this.cupPosition.y -= 0.025;
+    this.hands[receiving]!.getWorldPosition(this.receivingPosition);
+    this.root.worldToLocal(this.receivingPosition);
+    this.receivingPosition.y += 0.035;
+    this.streamDirection.subVectors(this.cupPosition, this.receivingPosition);
+    const length = Math.max(0.025, this.streamDirection.length());
     this.water.visible = true;
-    this.water.position.set(
-      this.cupPosition.x,
-      this.cupPosition.y - 0.17,
-      this.cupPosition.z,
-    );
+    this.water.position.copy(this.cupPosition).add(this.receivingPosition).multiplyScalar(0.5);
+    this.water.quaternion.setFromUnitVectors(this.streamUp, this.streamDirection.normalize());
+    this.water.scale.set(0.65 + amount * 0.35, length, 0.65 + amount * 0.35);
+    this.splash.visible = true;
+    this.splash.position.copy(this.receivingPosition);
+    this.splash.scale.setScalar(0.7 + (Math.sin(this.purifyTime * 24) + 1) * 0.35);
+    this.droplets.visible = true;
+    for (let i = 0; i < this.droplets.count; i++) {
+      const phase = (this.purifyTime * 2.8 + i / this.droplets.count) % 1;
+      const angle = i * 2.39996;
+      const radius = Math.sin(phase * Math.PI) * 0.075;
+      this.dropletDummy.position.set(
+        this.receivingPosition.x + Math.cos(angle) * radius,
+        this.receivingPosition.y + Math.sin(phase * Math.PI) * 0.055 - phase * phase * 0.36,
+        this.receivingPosition.z + 0.025 + phase * 0.08 + Math.sin(angle) * radius,
+      );
+      this.dropletDummy.scale.setScalar((1 - phase) * amount);
+      this.dropletDummy.updateMatrix();
+      this.droplets.setMatrixAt(i, this.dropletDummy.matrix);
+    }
+    this.droplets.instanceMatrix.needsUpdate = true;
   }
 
   private updatePurify(dt: number) {
@@ -239,8 +295,12 @@ export class PlayerController {
     this.resetPose();
     const p = frame.phase;
     const ease = Math.sin(p * Math.PI) ** 0.35;
-    const tip = Math.sin(THREE.MathUtils.clamp((p - 0.2) / 0.5, 0, 1) * Math.PI);
-    this.torso.rotation.x = 0.08 * ease;
+    const flow = (start: number, end: number) =>
+      THREE.MathUtils.smoothstep(p, start, start + 0.07) *
+      (1 - THREE.MathUtils.smoothstep(p, end - 0.08, end));
+    const tip = flow(0.22, 0.74);
+    const dip = Math.sin(THREE.MathUtils.clamp(p / 0.28, 0, 1) * Math.PI);
+    this.torso.rotation.x = 0.035 * ease;
     // Move the soft mitten pieces directly; there are no arm or elbow chains.
     const place = (index: 0 | 1, x: number, y: number, z: number) => {
       const hand = index === 0 ? this.leftArm : this.rightArm;
@@ -256,24 +316,31 @@ export class PlayerController {
       const receiving = right ? 0 : 1;
       const side = right ? 1 : -1;
       this.holdLadle(holding);
-      place(holding, side * 0.10, 0.43, 0.35);
-      place(receiving, -side * 0.07, 0.20, 0.58);
-      this.hands[holding]!.rotation.set(-1.1 * ease, 0, -side * 0.65 * tip);
-      this.pour(tip);
+      place(holding, side * 0.18, 0.53 - dip * 0.27, 0.47 + dip * 0.37);
+      place(receiving, -side * 0.10, 0.34, 0.70);
+      // Sleeve openings trail behind the palms rather than rising over the face.
+      (holding === 0 ? this.leftArm : this.rightArm).rotation.x = -0.95 * ease;
+      (receiving === 0 ? this.leftArm : this.rightArm).rotation.x = -0.95 * ease;
+      this.hands[holding]!.rotation.set(-0.85 * ease, 0, -side * 0.65 * tip);
+      this.hands[receiving]!.rotation.x = 0.90 * ease;
+      this.pour(flow(0.27, 0.69), receiving);
     } else if (frame.kind === "mouth") {
       this.holdLadle(1);
-      const sip = Math.sin(THREE.MathUtils.clamp((p - 0.35) / 0.55, 0, 1) * Math.PI);
-      place(1, 0.10, 0.43, 0.35);
-      place(0, -0.07 + sip * 0.04, 0.20 + sip * 0.36, 0.58 - sip * 0.15);
-      this.hands[1]!.rotation.set(-1.1 * ease, 0, -0.65 * tip);
-      this.pour(sip > 0.05 ? 0 : tip);
+      const sip = Math.sin(THREE.MathUtils.clamp((p - 0.38) / 0.5, 0, 1) * Math.PI);
+      place(1, 0.18 + sip * 0.13, 0.53 - sip * 0.10, 0.47 - sip * 0.10);
+      place(0, -0.10 + sip * 0.10, 0.34 + sip * 0.34, 0.70 - sip * 0.33);
+      this.rightArm.rotation.x = -0.95 * ease;
+      this.leftArm.rotation.x = -0.95 * ease;
+      this.hands[1]!.rotation.set(-0.85 * ease, 0, -0.65 * tip);
+      this.hands[0]!.rotation.x = 0.90 + sip * 0.35;
+      this.pour(flow(0.20, 0.42), 0);
     } else {
       this.holdLadle(1);
       const lift = Math.sin(p * Math.PI) ** 0.5;
-      place(1, 0.10, 0.50, 0.35);
-      place(0, -0.12, 0.23, 0.38);
+      place(1, 0.16, 0.62, 0.54);
+      place(0, -0.12, 0.34, 0.49);
       this.hands[1]!.rotation.x = -1.1 * ease - lift * (Math.PI - 1.1);
-      this.pour(0);
+      this.pour(flow(0.25, 0.76), 1);
     }
     if (frame.done) this.finishPurify(true);
   }
@@ -281,6 +348,8 @@ export class PlayerController {
   private finishPurify(completed: boolean) {
     this.ladle.visible = false;
     this.water.visible = false;
+    this.splash.visible = false;
+    this.droplets.visible = false;
     if (this.state === "Purify") this.state = "Idle";
     this.ritualStep = -1;
     this.ritualProgress = 0;
