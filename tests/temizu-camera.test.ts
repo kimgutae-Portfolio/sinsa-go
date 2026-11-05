@@ -13,6 +13,7 @@ const basinCollider = {
   maxX: TEMIZU_LAYOUT.x + TEMIZU_LAYOUT.width / 2,
   minZ: TEMIZU_LAYOUT.z - TEMIZU_LAYOUT.depth / 2,
   maxZ: TEMIZU_LAYOUT.z + TEMIZU_LAYOUT.depth / 2,
+  height: 0.86,
 };
 function settle(camera: CameraController) {
   for (let frame = 0; frame < 180; frame++) camera.update(1 / 60, player, [basinCollider]);
@@ -119,6 +120,27 @@ describe("the hand-washing camera", () => {
           }
           expect(visible.filter(Boolean).length, `${width}px: ${object.name} blocked by ${blockers.join(",")}`).toBeGreaterThanOrEqual(object === palm ? 2 : 1);
         }
+      }
+      // Finishing must not collapse the normal camera into a phantom tall
+      // basin collider or leave the canopy between the viewer and character.
+      traveler.update(10, new Vector2(), true);
+      traveler.root.updateMatrixWorld(true);
+      controller.setTemizuView(false);
+      for (let frame = 0; frame < 180; frame++) controller.update(1 / 60, player, world.colliders);
+      expect(traveler.state).toBe("Idle");
+      expect(controller.camera.position.distanceTo(player)).toBeGreaterThan(7);
+      for (const object of [traveler.root.getObjectByName("Face")!, palm]) {
+        const target = object.localToWorld(new Vector3(0, -0.2, 0.98));
+        const ray = new Raycaster(
+          controller.camera.position, target.clone().sub(controller.camera.position).normalize(),
+          0, target.distanceTo(controller.camera.position) + 0.01,
+        );
+        const first = ray.intersectObjects([world.root, traveler.root], true).find(hit => {
+          if (!(hit.object instanceof Mesh) || !hit.object.visible) return false;
+          const materials = Array.isArray(hit.object.material) ? hit.object.material : [hit.object.material];
+          return materials.some(material => !material.transparent || material.opacity > 0.95);
+        });
+        expect(first?.object.name, `return: ${object.name} blocked by ${first?.object.name}`).toBe(object.name);
       }
     } finally {
       assets.dispose();

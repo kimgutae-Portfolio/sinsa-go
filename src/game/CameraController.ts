@@ -76,12 +76,20 @@ export class CameraController {
     colliders: readonly Collider[] = [],
     snap = false,
   ) {
-    this.desired.copy(player).y += 2.15;
+    const basinDistance = Math.hypot(
+      player.x - TEMIZU_LAYOUT.approach.x,
+      player.z - TEMIZU_LAYOUT.approach.z,
+    );
+    const nearBasin = 1 - MathUtils.smoothstep(basinDistance, 2, 3.5);
+    this.desired.copy(player).y += MathUtils.lerp(2.15, 1.1, nearBasin);
     this.target.lerp(this.desired, snap ? 1 : 1 - Math.exp(-10 * dt));
+    // A lower aim and shallow angle let the normal orbit see under the canopy
+    // after the ritual. Keep the visitor's chosen pitch for the rest of the map.
+    const pitch = MathUtils.lerp(this.pitch, Math.min(this.pitch, MathUtils.degToRad(19)), nearBasin);
     this.offset.set(
-      Math.sin(this.yaw) * Math.cos(this.pitch),
-      Math.sin(this.pitch),
-      Math.cos(this.yaw) * Math.cos(this.pitch),
+      Math.sin(this.yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      Math.cos(this.yaw) * Math.cos(pitch),
     );
     this.ray.set(this.target, this.offset);
     let distance = this.distance;

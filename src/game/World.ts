@@ -507,6 +507,7 @@ export class World {
       TEMIZU_LAYOUT.z,
       TEMIZU_LAYOUT.width,
       TEMIZU_LAYOUT.depth,
+      0.86,
     );
     for (const side of [-1, 1]) {
       const bench = group();
