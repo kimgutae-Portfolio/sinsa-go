@@ -73,6 +73,7 @@ defineExpose({
   reset: () => game?.reset(),
   visit: (id: InteractionId) => game?.visit(id),
   joinRoom: (room: string) => game?.joinRoom(room),
+  recordFortuneDraw: () => game?.recordFortuneDraw(),
   hangLantern: (
     productId: string,
     wish: string,

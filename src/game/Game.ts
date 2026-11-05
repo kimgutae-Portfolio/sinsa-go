@@ -459,7 +459,6 @@ export class Game {
         this.player.pray(() => this.callbacks.onPrayed());
         break;
       case "fortune":
-        this.multiplayer?.activity("fortune");
         this.callbacks.onFortune();
         break;
       case "ema":
@@ -544,6 +543,11 @@ export class Game {
 
   joinRoom(room: string) {
     return this.multiplayer?.joinRoom(room) ?? false;
+  }
+  recordFortuneDraw() {
+    if (!this.ready || this.disposed) return;
+    // Drawing happens in the dialog while movement is paused.
+    this.multiplayer?.activity("fortune");
   }
   hangLantern(
     productId: string,

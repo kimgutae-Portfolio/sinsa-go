@@ -201,6 +201,44 @@
 .fortune-details dt span { display: block; margin: 3px 0 0; color: var(--shrine-secondary); font-size: 9px; line-height: 1.7; letter-spacing: .025em; }
 .fortune-details dd { font-family: var(--shrine-mincho); font-size: 13px; color: var(--shrine-ink); line-height: 2.05; letter-spacing: .02em; }
 .modal-dialog .fortune-footnote { color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; margin: 22px 0; }
+
+/* The visitor draws a numbered stick before unfolding the paper. */
+.omikuji-experience { display: flex; flex: 1; min-height: 0; }
+.omikuji-draw {
+  display: grid;
+  grid-template-rows: auto minmax(105px, 1fr) 60px auto;
+  flex: 1;
+  min-height: 0;
+  gap: 10px;
+  padding: 9px 32px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.omikuji-draw-heading { text-align: center; }
+.modal-dialog .omikuji-shrine-name { margin: 0; color: var(--shrine-red); font-family: var(--shrine-mincho); font-size: 11px; line-height: 1.8; letter-spacing: .15em; }
+.modal-dialog .omikuji-draw-heading h2 { margin: 8px 0 10px; font-size: 29px; line-height: 1.5; letter-spacing: .12em; }
+.modal-dialog .omikuji-draw-intro { margin: 0; color: var(--shrine-secondary); font-family: var(--shrine-mincho); font-size: 12px; line-height: 1.9; letter-spacing: .015em; }
+.omikuji-vessel-area { position: relative; min-height: 105px; }
+.omikuji-vessel-art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-width: 235px; max-height: 290px; margin: auto; overflow: visible; }
+.omikuji-vessel { transform-origin: 130px 260px; }
+.omikuji-vessel-label { fill: #783c30; font-family: var(--shrine-mincho); font-size: 17px; text-anchor: middle; }
+.omikuji-stick { opacity: 0; transform: translateY(94px); }
+.omikuji-stick-number { fill: #503e28; font-family: var(--shrine-mincho); font-size: 11px; text-anchor: start; writing-mode: vertical-rl; letter-spacing: .1em; }
+.omikuji-draw[data-phase="drawing"] .omikuji-vessel { animation: omikuji-shake var(--omikuji-draw-duration) ease-in-out both; }
+.omikuji-draw[data-phase="drawing"] .omikuji-stick { animation: omikuji-stick-rise var(--omikuji-draw-duration) cubic-bezier(.2, .65, .3, 1) both; }
+.omikuji-draw[data-phase="drawn"] .omikuji-stick { opacity: 1; transform: translateY(0); }
+.omikuji-draw-status { align-self: center; color: var(--shrine-secondary); font-family: var(--shrine-mincho); text-align: center; }
+.modal-dialog .omikuji-draw-status p { margin: 0; font-size: 11px; line-height: 1.9; letter-spacing: .025em; }
+.modal-dialog .omikuji-draw-status .omikuji-drawn-number { margin: 0 0 5px; font-size: 23px; line-height: 1.5; letter-spacing: .12em; color: var(--shrine-ink); }
+.modal-dialog .omikuji-draw-status .omikuji-drawing-label { color: var(--shrine-ink); font-size: 13px; }
+.omikuji-draw-actions { display: grid; gap: 2px; }
+.omikuji-draw-actions .primary-button { width: 100%; min-height: 48px; }
+.omikuji-draw-actions .primary-button:disabled { cursor: wait; opacity: .65; }
+.omikuji-return { min-height: 44px; padding: 8px 12px; border: 0; border-radius: 0; color: var(--shrine-secondary); background: transparent; font-family: var(--shrine-mincho); font-size: 11px; letter-spacing: .06em; }
+.omikuji-return:hover { color: var(--shrine-red); background: transparent; }
+.fortune-dialog:has(.omikuji-draw)::after { opacity: 0; }
+
 .ema-wishes { margin: 0; gap: 0; border-bottom: 1px solid var(--shrine-line); }
 .ema-wishes blockquote {
   display: grid;
@@ -340,6 +378,30 @@
   45% { clip-path: inset(10% 0 10% 0); }
   100% { clip-path: inset(0); transform: translateY(0) rotateX(0) rotateZ(0); }
 }
+.modal-enter-active:has(.omikuji-draw) { transition: opacity .28s ease; }
+.modal-enter-active .fortune-dialog:has(.omikuji-draw) { animation: none; transition: transform .28s ease, opacity .28s ease; }
+.modal-enter-from .fortune-dialog:has(.omikuji-draw) { transform: translateY(14px); opacity: 0; }
+.fortune-dialog:has(.omikuji-opened-slip) { animation: omikuji-paper-unfold .72s cubic-bezier(.18, .7, .2, 1) both; }
+.modal-leave-active .fortune-dialog:has(.omikuji-opened-slip) { animation: none; }
+@keyframes omikuji-shake {
+  0%, 10% { transform: rotate(0); }
+  17% { transform: rotate(-6deg); }
+  25% { transform: rotate(6deg); }
+  33% { transform: rotate(-5deg); }
+  41% { transform: rotate(4deg); }
+  49% { transform: rotate(-2deg); }
+  58%, 100% { transform: rotate(0); }
+}
+@keyframes omikuji-stick-rise {
+  0%, 44% { opacity: 0; transform: translateY(94px); }
+  49% { opacity: 1; transform: translateY(94px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes omikuji-paper-unfold {
+  0% { clip-path: inset(42% 0 42% 0); transform: translateY(12px); }
+  45% { clip-path: inset(10% 0 10% 0); }
+  100% { clip-path: inset(0); transform: translateY(0); }
+}
 
 @media (max-width: 700px) {
   .experience .interaction-dock:has(.ritual-card) {
@@ -356,6 +418,7 @@
   .modal-dialog .fortune-title { font-size: 56px; }
   .modal-dialog.fortune-dialog { flex-basis: 380px; width: 380px; max-height: calc(100svh - max(28px, env(safe-area-inset-top)) - max(28px, env(safe-area-inset-bottom))); }
   .fortune-slip-content { padding: 4px 25px 25px; }
+  .omikuji-draw { padding-right: 25px; padding-left: 25px; }
   .modal-dialog .fortune-description { font-size: 13px; }
   .fortune-details > div { grid-template-columns: 60px minmax(0, 1fr); gap: 14px; }
   .ema-wishes blockquote { font-size: 16px; min-height: 105px; }
@@ -402,6 +465,12 @@
   .modal-enter-from .modal-dialog, .modal-leave-to .modal-dialog { transform: none; }
   .modal-enter-active:has(.fortune-dialog), .modal-leave-active:has(.fortune-dialog) { transition: none; }
   .modal-enter-active .fortune-dialog { animation: none; }
+  .modal-enter-active:has(.omikuji-draw) { transition: none; }
+  .modal-enter-active .fortune-dialog:has(.omikuji-draw) { transition: none; }
+  .modal-enter-from .fortune-dialog:has(.omikuji-draw) { transform: none; }
+  .fortune-dialog:has(.omikuji-opened-slip),
+  .omikuji-draw[data-phase="drawing"] .omikuji-vessel,
+  .omikuji-draw[data-phase="drawing"] .omikuji-stick { animation: none; }
   .fortune-reader::before, .fortune-reader::after { transition: none; }
 }
 

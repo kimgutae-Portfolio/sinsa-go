@@ -5,7 +5,7 @@ import TouchJoystick from "./components/TouchJoystick.vue";
 import Icon from "./components/Icon.vue";
 import SoundControls from "./components/SoundControls.vue";
 import EmaPanel from "./components/EmaPanel.vue";
-import OmikujiSlip from "./components/OmikujiSlip.vue";
+import OmikujiExperience from "./components/OmikujiExperience.vue";
 import { FREE_LANTERN_POLICY, type LanternState } from "./shared/lanterns";
 import type { VisitorSummary } from "./shared/visitorStats";
 import type {
@@ -14,7 +14,6 @@ import type {
   SceneLabel,
   VisitorLabel,
 } from "./game/types";
-import { drawFortune, type Fortune } from "./game/fortunes";
 import { RITUAL_STEPS, TEMIZU_STEPS } from "./game/ritual";
 import { PLAYER_SPAWN } from "./game/config";
 import {
@@ -142,7 +141,8 @@ watch(
 );
 const labels = ref<SceneLabel[]>([]);
 const modal = ref<"help" | "fortune" | "ema" | null>(null);
-const fortune = ref<Fortune>(drawFortune());
+const fortuneAttempt = ref(0);
+const omikujiExperience = ref<InstanceType<typeof OmikujiExperience>>();
 const visited = ref<InteractionId[]>([]);
 const selected = ref<InteractionId>("temizu");
 const toast = ref("");
@@ -255,9 +255,12 @@ function purified() {
   selected.value = "offering";
 }
 function openFortune() {
-  fortune.value = drawFortune();
+  fortuneAttempt.value++;
   modal.value = "fortune";
+}
+function onFortuneDrawn() {
   markVisited("fortune");
+  game.value?.recordFortuneDraw();
 }
 function openEma() {
   modal.value = "ema";
@@ -303,6 +306,7 @@ function onDialogKey(event: KeyboardEvent) {
   }
 }
 watch(modal, async (value, oldValue) => {
+  if (oldValue === "fortune" && value !== "fortune") omikujiExperience.value?.cancel();
   if (value) {
     if (!oldValue) previousFocus = document.activeElement as HTMLElement | null;
   }
@@ -310,7 +314,7 @@ watch(modal, async (value, oldValue) => {
   if (modal.value !== value) return;
   if (value) {
     const target = value === "fortune"
-      ? dialog.value?.querySelector<HTMLElement>(".fortune-slip-content")
+      ? dialog.value?.querySelector<HTMLElement>("[data-omikuji-initial-focus], .fortune-slip-content") ?? dialog.value
       : dialog.value;
     target?.focus();
   }
@@ -771,9 +775,11 @@ onBeforeUnmount(() => {
                 境内に戻る<Icon name="arrow" :size="18" />
               </button>
             </template>
-            <OmikujiSlip
+            <OmikujiExperience
               v-else-if="modal === 'fortune'"
-              :fortune="fortune"
+              :key="fortuneAttempt"
+              ref="omikujiExperience"
+              @drawn="onFortuneDrawn"
               @close="modal = null"
             />
           </section>
