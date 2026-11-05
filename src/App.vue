@@ -18,9 +18,12 @@ import { drawFortune, type Fortune } from "./game/fortunes";
 import { RITUAL_STEPS, TEMIZU_STEPS } from "./game/ritual";
 import { PLAYER_SPAWN } from "./game/config";
 import {
-  DEFAULT_ROOM,
+  AUTO_ROOM,
+  PUBLIC_ROOMS,
   ROOM_CAPACITY,
-  validRoom,
+  isPublicRoom,
+  roomName,
+  validRoomTarget,
   type Presence,
 } from "./shared/multiplayer";
 import { inject as injectAnalytics } from "@vercel/analytics";
@@ -32,17 +35,18 @@ const game = ref<InstanceType<typeof GameCanvas>>();
 const ready = ref(false);
 const guideOpen = ref(false);
 const roomOpen = ref(false);
-const initialRoom =
-  new URLSearchParams(location.search).get("room") ?? DEFAULT_ROOM;
-const roomDraft = ref(validRoom(initialRoom) ? initialRoom : DEFAULT_ROOM);
+const roomQuery = new URLSearchParams(location.search).get("room");
+const initialRoom = isPublicRoom(roomQuery) ? roomQuery : AUTO_ROOM;
 const presence = ref<Presence>({
   state: "connecting",
-  room: roomDraft.value,
+  room: initialRoom,
   count: 1,
   capacity: ROOM_CAPACITY,
   selfId: null,
   selfName: "旅人",
   peers: [],
+  rooms: [],
+  switchingTo: null,
 });
 const visitorLabels = ref<VisitorLabel[]>([]);
 const profile = ref<VisitorSummary | null>(null);
@@ -53,12 +57,23 @@ const connectedTime = computed(() => {
     : `${Math.floor(minutes / 60)}時間${minutes % 60}分`;
 });
 const lanternState = ref<LanternState>({
-  room: roomDraft.value,
+  room: initialRoom,
   lanterns: [],
   mineIds: [],
   policy: { ...FREE_LANTERN_POLICY },
 });
 const roomError = ref("");
+const requestedRoom = ref<string | null>(null);
+const roomChoices = computed(() => PUBLIC_ROOMS.map(room => ({
+  ...room,
+  count: presence.value.rooms.find(item => item.id === room.id)?.count,
+  capacity: presence.value.rooms.find(item => item.id === room.id)?.capacity ?? ROOM_CAPACITY,
+})));
+const canSwitchRooms = computed(() => ready.value
+  && !presence.value.switchingTo
+  && !["connecting", "reconnecting"].includes(presence.value.state)
+  && snapshot.value.state !== "Pray"
+  && snapshot.value.state !== "Purify");
 const connectionText = computed(() =>
   presence.value.state === "connected"
     ? `${presence.value.count} / ${presence.value.capacity}`
@@ -68,28 +83,34 @@ const connectionText = computed(() =>
         ? "ひとりで散策"
         : "接続中",
 );
-function switchRoom() {
-  const room = roomDraft.value.trim().toLowerCase();
-  if (!validRoom(room)) {
-    roomError.value = "半角英小文字・数字・_・-の1〜32文字で入力してください。";
-    return;
-  }
-  if (game.value?.joinRoom(room)) {
-    const url = new URL(location.href);
-    url.searchParams.set("room", room);
-    history.replaceState(null, "", url);
-    roomDraft.value = room;
-    roomError.value = "";
-    roomOpen.value = false;
-    notify(`${room} に入っています。`);
+function switchRoom(room: string) {
+  if (!validRoomTarget(room) || !canSwitchRooms.value) return;
+  requestedRoom.value = room;
+  roomError.value = "";
+  if (!game.value?.joinRoom(room)) {
+    requestedRoom.value = null;
+    roomError.value = "ただいま移動できません。少し待ってからお試しください。";
   }
 }
+watch(
+  () => [presence.value.state, presence.value.room, presence.value.switchingTo] as const,
+  ([state, room, switchingTo], [, oldRoom, oldSwitchingTo]) => {
+    if (state === "connected" && isPublicRoom(room) && !switchingTo) {
+      const url = new URL(location.href);
+      url.searchParams.set("room", room);
+      history.replaceState(null, "", url);
+      if (requestedRoom.value && room !== oldRoom) notify(`${roomName(room)}へ移動しました。`);
+    }
+    if (oldSwitchingTo && !switchingTo) requestedRoom.value = null;
+  },
+);
 async function copyInvite() {
+  if (presence.value.state !== "connected" || !isPublicRoom(presence.value.room)) return;
   const url = new URL(location.href);
   url.searchParams.set("room", presence.value.room);
   try {
     await navigator.clipboard.writeText(url.toString());
-    notify("同じルームへの招待リンクをコピーしました。");
+    notify(`${roomName(presence.value.room)}への招待リンクをコピーしました。`);
   } catch {
     notify(
       `アドレスに ?room=${presence.value.room} を付けて共有してください。`,
@@ -191,6 +212,7 @@ const interactionText = computed(
 const busy = computed(
   () => snapshot.value.state === "Pray" || snapshot.value.state === "Purify",
 );
+const interactionBlocked = computed(() => busy.value || !!presence.value.switchingTo);
 const purifying = computed(() => snapshot.value.state === "Purify");
 const ritualSteps = computed(() =>
   purifying.value
@@ -312,7 +334,7 @@ onBeforeUnmount(() => {
     <main class="experience" :inert="modal !== null" aria-label="こもれび神社の散策">
       <GameCanvas
         ref="game"
-        :paused="modal !== null"
+        :paused="modal !== null || !!presence.switchingTo"
         @ready="ready = true"
         @update="snapshot = $event"
         @labels="labels = $event"
@@ -386,17 +408,52 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <h2>
-            {{ presence.room }}
-            <small>{{ presence.count }} / {{ presence.capacity }}</small>
+            {{ roomName(presence.room) }}
+            <small v-if="presence.state === 'connected'">{{ presence.count }} / {{ presence.capacity }}</small>
           </h2>
           <p v-if="presence.state === 'connected'">
-            同じルームの方が、この境内に一緒に表示されます。
+            同じ境内の方と、一緒にお過ごしいただけます。
           </p>
           <p v-else-if="presence.state === 'full'">
-            このルームは満員です。下から別のルームに入れます。
+            満員のため入れませんでした。空きのある境内をお選びください。
           </p>
           <p v-else>接続を待っています。それまではひとりで散策できます。</p>
-          <ul class="visitor-list">
+          <section class="room-directory" aria-labelledby="room-directory-title">
+            <div class="room-directory-heading">
+              <h3 id="room-directory-title">境内を選ぶ</h3><span>各15名まで</span>
+            </div>
+            <ul class="room-directory-list">
+              <li
+                v-for="room in roomChoices"
+                :key="room.id"
+                :class="{ current: presence.state === 'connected' && room.id === presence.room }"
+              >
+                <span class="room-choice-name">{{ room.name }}</span>
+                <span class="room-choice-count">{{ room.count ?? '—' }}<small> / {{ room.capacity }}</small></span>
+                <button
+                  :disabled="!canSwitchRooms || room.count === room.capacity || (presence.state === 'connected' && room.id === presence.room)"
+                  :aria-label="room.id === presence.switchingTo ? `${room.name}へ移動中` : presence.state === 'connected' && room.id === presence.room ? `${room.name}に滞在中` : room.count === room.capacity ? `${room.name}は満員` : `${room.name}へ移動`"
+                  @click="switchRoom(room.id)"
+                >
+                  {{ room.id === presence.switchingTo ? '移動中' : presence.state === 'connected' && room.id === presence.room ? '滞在中' : room.count === room.capacity ? '満員' : '移動' }}
+                </button>
+              </li>
+            </ul>
+            <button class="room-auto-button" :disabled="!canSwitchRooms" @click="switchRoom(AUTO_ROOM)">
+              {{ presence.switchingTo === AUTO_ROOM ? '境内を探しています…' : 'おまかせで入る' }}
+              <Icon name="arrow" :size="15" />
+            </button>
+            <p class="room-directory-note">おまかせでは8名未満の境内を優先し、どこも賑わっているときは、空きの多い境内へご案内します。</p>
+            <p v-if="presence.switchingTo" class="room-switch-status" role="status">
+              {{ presence.switchingTo === AUTO_ROOM ? '境内をご案内しています。' : `${roomName(presence.switchingTo)}へ移動しています。` }}
+            </p>
+            <p v-else-if="snapshot.state === 'Pray' || snapshot.state === 'Purify'" class="room-directory-note">体験が終わると、別の境内へ移動できます。</p>
+            <p v-if="roomError" class="room-error" role="alert">{{ roomError }}</p>
+          </section>
+          <button class="invite-button" :disabled="presence.state !== 'connected' || !!presence.switchingTo" @click="copyInvite">
+            <Icon name="link" :size="16" /> この境内へ招待
+          </button>
+          <ul v-if="presence.state === 'connected'" class="visitor-list" aria-label="この境内の参拝者">
             <li>
               <span class="visitor-color self"></span>{{ presence.selfName
               }}<small>自分</small>
@@ -433,29 +490,6 @@ onBeforeUnmount(() => {
             </dl>
             <small>境内で過ごした時間 {{ connectedTime }}</small>
           </section>
-          <button class="invite-button" @click="copyInvite">
-            <Icon name="link" :size="16" /> 招待リンクをコピー
-          </button>
-          <form class="room-form" @submit.prevent="switchRoom">
-            <label for="room-name">ルーム名で入る</label>
-            <div>
-              <input
-                id="room-name"
-                v-model="roomDraft"
-                maxlength="32"
-                autocapitalize="none"
-                autocomplete="off"
-                spellcheck="false"
-                aria-describedby="room-hint"
-              /><button type="submit">入る</button>
-            </div>
-            <small id="room-hint"
-              >同じ名前を入力すると、同じ境内に集まれます。</small
-            >
-            <p v-if="roomError" class="room-error" role="alert">
-              {{ roomError }}
-            </p>
-          </form>
         </aside>
       </Transition>
       <div
@@ -503,7 +537,7 @@ onBeforeUnmount(() => {
               v-for="place in places"
               :key="place.id"
               :class="{ selected: selected === place.id }"
-              :disabled="busy"
+              :disabled="interactionBlocked"
               @click="visit(place.id)"
             >
               <Icon
@@ -524,7 +558,7 @@ onBeforeUnmount(() => {
           class="scene-label glass"
           :class="{ nearby: snapshot.nearby === label.id }"
           :style="{ left: `${label.x}px`, top: `${label.y}px` }"
-          :disabled="busy || modal !== null"
+          :disabled="interactionBlocked || modal !== null"
           :aria-label="`${labelName(label.id)}へ向かう`"
           @click="visit(label.id as InteractionId)"
         >
@@ -575,6 +609,7 @@ onBeforeUnmount(() => {
               v-else-if="snapshot.nearby && !snapshot.destination"
               class="interact-button glass"
               key="nearby"
+              :disabled="interactionBlocked"
               @click="game?.interact()"
             >
               <Icon
@@ -603,7 +638,7 @@ onBeforeUnmount(() => {
           <button
             v-for="place in places"
             :key="place.id"
-            :disabled="busy || modal !== null"
+            :disabled="interactionBlocked || modal !== null"
             :class="{
               active:
                 snapshot.destination === place.id ||
@@ -624,12 +659,12 @@ onBeforeUnmount(() => {
         </nav>
         <div class="touch-controls">
           <TouchJoystick
-            :disabled="busy || modal !== null"
+            :disabled="interactionBlocked || modal !== null"
             @move="(x, y) => game?.touch(x, y)"
           /><button
             class="touch-action glass"
             :disabled="
-              !snapshot.nearby || busy || modal !== null
+              !snapshot.nearby || interactionBlocked || modal !== null
             "
             aria-label="近くの場所で体験する"
             @click="game?.interact()"

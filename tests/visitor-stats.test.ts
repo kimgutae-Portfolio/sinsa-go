@@ -31,6 +31,20 @@ afterEach(async () => {
   }
 });
 describe("anonymous visitor statistics", () => {
+  it("persists room changes without counting another connection or visit", async () => {
+    const repository = new MemoryVisitorRepository();
+    const stats = service(repository);
+    stats.begin(owner(), "session", "komorebi", now);
+    expect(stats.moveRoom("unknown-session", "hinoki", now)).toBe(false);
+    expect(stats.moveRoom("session", "../invalid", now)).toBe(false);
+    await stats.flush();
+    expect(stats.moveRoom("session", "hinoki", now)).toBe(true);
+    await stats.flush();
+    expect(repository.load()[0]).toMatchObject({ lastRoom: "hinoki", connectionCount: 1, visitCount: 1, connectedMs: 0 });
+    stats.moveRoom("session", "sugi", now + 1000);
+    stats.end("session", now + 2000);
+    expect(stats.summary(owner())).toMatchObject({ lastRoom: "sugi", connectionCount: 1, visitCount: 1, connectedMs: 2000 });
+  });
   it("keeps a stable visitor across refreshes and separates connections from 30-minute visits", () => {
     const stats = service();
     stats.begin(owner(), "session1", "garden", now);

@@ -246,12 +246,27 @@
 .experience .visitor-history :is(dt, small) { color: var(--shrine-secondary); font-size: 10px; }
 .experience .visitor-history dd { color: var(--shrine-ink); font-family: var(--shrine-mincho); }
 .experience .invite-button { background: transparent; border: 1px solid var(--shrine-line); border-radius: 2px; font-size: 12px; color: var(--shrine-ink); }
-.experience .invite-button:hover { background: #e8e4d9; }
-.experience .room-form { border-color: var(--shrine-line); }
-.experience .room-form label { font-size: 12px; color: var(--shrine-ink); }
-.experience .room-form input { border-color: var(--shrine-line); border-radius: 1px; background: #faf8f2; color: var(--shrine-ink); font-size: 13px; }
-.experience .room-form button { border-radius: 1px; background: var(--shrine-ink); font-size: 12px; }
-.experience .room-form > small { color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; }
+.experience .invite-button { min-height: 44px; }
+.experience .invite-button:hover:not(:disabled) { background: #e8e4d9; }
+.experience .invite-button:disabled { opacity: .45; cursor: default; }
+.room-directory { margin: 23px 0 18px; }
+.room-directory-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.room-directory-heading h3 { margin: 0; color: var(--shrine-ink); font-family: var(--shrine-mincho); font-size: 14px; font-weight: 500; letter-spacing: .06em; }
+.room-directory-heading > span { color: var(--shrine-secondary); font-size: 10px; }
+.room-directory-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--shrine-line); }
+.room-directory-list > li { display: grid; grid-template-columns: minmax(0, 1fr) auto 58px; align-items: center; gap: 12px; min-height: 49px; border-bottom: 1px solid var(--shrine-line); }
+.room-choice-name { color: var(--shrine-ink); font-family: var(--shrine-mincho); font-size: 13px; letter-spacing: .04em; }
+.room-choice-count { color: var(--shrine-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+.room-choice-count small { color: var(--shrine-secondary); font-size: 9px; }
+.room-directory-list button { min-height: 44px; padding: 7px 4px; border: 0; border-radius: 0; background: transparent; color: var(--shrine-red); font-family: var(--shrine-mincho); font-size: 12px; }
+.room-directory-list button:hover:not(:disabled) { background: #e8e4d9; }
+.room-directory-list button:disabled { color: var(--shrine-secondary); cursor: default; }
+.room-directory-list > li.current .room-choice-name { color: var(--shrine-red); }
+.room-auto-button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 13px 0 8px; border: 0; border-radius: 0; background: transparent; color: var(--shrine-ink); font-family: var(--shrine-mincho); font-size: 12px; letter-spacing: .04em; }
+.room-auto-button:hover:not(:disabled) { color: var(--shrine-red); }
+.room-auto-button:disabled { opacity: .45; cursor: default; }
+.room-directory-note { margin: 6px 0 0; color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; }
+.room-switch-status { margin: 10px 0 0; color: var(--shrine-red); font-size: 11px; line-height: 1.8; }
 
 /* Lantern writing desk: one sheet, with fields rather than stacked cards. */
 .lantern-dialog { flex-basis: 650px; width: 650px; max-width: 100%; padding: 58px 32px 28px; }

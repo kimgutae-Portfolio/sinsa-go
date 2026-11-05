@@ -10,9 +10,33 @@ import type { VisitorSummary } from "./visitorStats";
 import { canOccupy } from "../game/collision";
 import type { Collider } from "../game/types";
 
-export const PROTOCOL_VERSION = 2;
-export const ROOM_CAPACITY = 12;
+export const PROTOCOL_VERSION = 3;
+export const ROOM_CAPACITY = 15;
 export const DEFAULT_ROOM = "komorebi";
+export const AUTO_ROOM = "auto";
+export const ROOM_AUTO_THRESHOLD = Math.ceil(ROOM_CAPACITY / 2);
+export const PUBLIC_ROOMS = [
+  { id: DEFAULT_ROOM, name: "第一境内" },
+  { id: "hinoki", name: "第二境内" },
+  { id: "sugi", name: "第三境内" },
+  { id: "sakura", name: "第四境内" },
+  { id: "kaede", name: "第五境内" },
+] as const;
+export interface RoomSummary {
+  id: string;
+  name: string;
+  count: number;
+  capacity: number;
+}
+export function isPublicRoom(value: unknown): value is string {
+  return typeof value === "string" && PUBLIC_ROOMS.some(room => room.id === value);
+}
+export function validRoomTarget(value: unknown): value is string {
+  return value === AUTO_ROOM || isPublicRoom(value);
+}
+export function roomName(id: string) {
+  return PUBLIC_ROOMS.find(room => room.id === id)?.name ?? "境内を案内中";
+}
 export const NETWORK_HZ = 10;
 export const VISITOR_COLORS = [
   "#85866a",
@@ -46,6 +70,7 @@ export interface Visitor extends Position {
 export type ClientMessage =
   | { type: "activity"; activity: "fortune" | "ema" }
   | { type: "join"; version: number; room: string; visitorKey?: string }
+  | { type: "switch-room"; room: string }
   | {
       type: "lantern-hang";
       requestId: string;
@@ -67,6 +92,7 @@ export type ClientMessage =
   | { type: "pray" }
   | { type: "reset" };
 export type ServerMessage =
+  | { type: "rooms"; rooms: RoomSummary[] }
   | { type: "profile"; serverTime: number; profile: VisitorSummary }
   | ({ type: "lanterns"; serverTime: number } & LanternState)
   | {
@@ -85,6 +111,7 @@ export type ServerMessage =
       capacity: number;
       serverTime: number;
       players: Visitor[];
+      rooms: RoomSummary[];
     }
   | { type: "snapshot"; serverTime: number; players: Visitor[] }
   | { type: "correction"; serverTime: number; player: Visitor }
@@ -94,6 +121,7 @@ export type ServerMessage =
         | "room_full"
         | "server_full"
         | "invalid_room"
+        | "room_busy"
         | "protocol"
         | "ritual_busy"
         | "too_far";
@@ -109,6 +137,8 @@ export interface Presence {
   selfId: string | null;
   selfName: string;
   peers: { id: string; name: string; tint: string }[];
+  rooms: RoomSummary[];
+  switchingTo: string | null;
 }
 
 export function validRoom(value: unknown): value is string {

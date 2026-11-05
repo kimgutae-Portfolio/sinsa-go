@@ -101,6 +101,17 @@ export class VisitorStatsService {
     visitor.lastSeenAt = Math.max(visitor.lastSeenAt, now);
     return true;
   }
+  moveRoom(sessionId: string, room: string, now: number) {
+    const ownerHash = this.sessions.get(sessionId);
+    if (!ownerHash || !validRoom(room)) return false;
+    const visitor = this.visitors.get(ownerHash);
+    if (!visitor) return false;
+    this.account(ownerHash, now);
+    visitor.lastRoom = room;
+    visitor.lastSeenAt = Math.max(visitor.lastSeenAt, now);
+    this.revision++;
+    return true;
+  }
   end(sessionId: string, now: number) {
     const ownerHash = this.sessions.get(sessionId);
     if (!ownerHash) return;

@@ -7,9 +7,11 @@ import {
 import { RemotePlayer } from "../src/game/RemotePlayer";
 import {
   PROTOCOL_VERSION,
+  PUBLIC_ROOMS,
   ROOM_CAPACITY,
   type ServerMessage,
   type Visitor,
+  type RoomSummary,
 } from "../src/shared/multiplayer";
 import { FREE_LANTERN_POLICY } from "../src/shared/lanterns";
 import { surface } from "../src/game/surfaces";
@@ -55,10 +57,12 @@ class FakeSocket {
     this.onmessage?.({ data: JSON.stringify(message) });
   }
 }
+const directory = (occupiedRoom = "komorebi", count = 2): RoomSummary[] =>
+  PUBLIC_ROOMS.map(room => ({ ...room, count: room.id === occupiedRoom ? count : 0, capacity: ROOM_CAPACITY }));
 function welcome(
   socket: FakeSocket,
   players = [visitor(), visitor("b", 2)],
-  room = "garden",
+  room = "komorebi",
 ) {
   socket.receive({
     type: "welcome",
@@ -68,6 +72,7 @@ function welcome(
     capacity: ROOM_CAPACITY,
     serverTime: Date.now() + 500,
     players,
+    rooms: directory(room, players.length),
   });
 }
 let client: MultiplayerClient;
@@ -75,7 +80,7 @@ let callbacks: MultiplayerCallbacks;
 beforeEach(() => {
   vi.useFakeTimers();
   FakeSocket.instances = [];
-  vi.stubGlobal("location", new URL("http://localhost:4173/?room=garden"));
+  vi.stubGlobal("location", new URL("http://localhost:4173/?room=komorebi"));
   vi.stubGlobal("window", new EventTarget());
   vi.stubGlobal("document", { hidden: false });
   vi.stubGlobal("WebSocket", FakeSocket);
@@ -106,7 +111,7 @@ describe("multiplayer client lifecycle", () => {
     expect(JSON.parse(socket.sent[0]!)).toEqual({
       type: "join",
       version: PROTOCOL_VERSION,
-      room: "garden",
+      room: "komorebi",
       visitorKey: expect.any(String),
     });
     vi.advanceTimersByTime(200);
@@ -200,7 +205,7 @@ describe("multiplayer client lifecycle", () => {
     socket.receive({
       type: "lanterns",
       serverTime: Date.now(),
-      room: "garden",
+      room: "komorebi",
       lanterns: [],
       mineIds: [],
       policy: { ...FREE_LANTERN_POLICY, mode: "paid" },
@@ -218,6 +223,7 @@ describe("multiplayer client lifecycle", () => {
     socket.open();
     welcome(socket);
     const first = client.hangLantern("paper-warm", "소원", "", null);
+    expect(client.joinRoom("hinoki")).toBe(false);
     expect(
       await client.hangLantern("paper-warm", "소원", "", null),
     ).toMatchObject({ ok: false });
@@ -231,25 +237,25 @@ describe("multiplayer client lifecycle", () => {
     client.dispose();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("stops retrying a full room and can enter another room explicitly", () => {
+  it.each(["room_full", "server_full"] as const)("stops retrying after %s and can enter another room explicitly", (code) => {
     client.connect();
     const first = FakeSocket.instances[0]!;
     first.open();
-    first.receive({ type: "error", code: "room_full", message: "가득 찼어요" });
+    first.receive({ type: "error", code, message: "가득 찼어요" });
     vi.advanceTimersByTime(30000);
     expect(FakeSocket.instances).toHaveLength(1);
     expect(callbacks.onPresence).toHaveBeenLastCalledWith(
       expect.objectContaining({ state: "full" }),
     );
     expect(client.joinRoom("../bad")).toBe(false);
-    expect(client.joinRoom("forest")).toBe(true);
+    expect(client.joinRoom("hinoki")).toBe(true);
     const second = FakeSocket.instances[1]!;
     second.open();
-    welcome(second, [visitor()], "forest");
+    welcome(second, [visitor()], "hinoki");
     expect(callbacks.onPresence).toHaveBeenLastCalledWith(
       expect.objectContaining({
         state: "connected",
-        room: "forest",
+        room: "hinoki",
         count: 1,
         peers: [],
       }),
@@ -265,6 +271,131 @@ describe("multiplayer client lifecycle", () => {
     expect(socket.readyState).toBe(3);
     vi.advanceTimersByTime(1300);
     expect(FakeSocket.instances).toHaveLength(2);
+  });
+  it("requests automatic admission for a plain URL or legacy custom link and reconnects to the assigned public room", () => {
+    client.dispose();
+    vi.stubGlobal("location", new URL("http://localhost:4173/"));
+    client = new MultiplayerClient(callbacks);
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    expect(JSON.parse(socket.sent[0]!)).toMatchObject({ type: "join", room: "auto" });
+    welcome(socket, [visitor()], "hinoki");
+    expect(client.connected).toBe(true);
+    expect(callbacks.onPresence).toHaveBeenLastCalledWith(expect.objectContaining({ room: "hinoki", state: "connected" }));
+    socket.close();
+    vi.advanceTimersByTime(1300);
+    const reconnected = FakeSocket.instances[1]!;
+    reconnected.open();
+    expect(JSON.parse(reconnected.sent[0]!)).toMatchObject({ type: "join", room: "hinoki" });
+    client.dispose();
+    vi.stubGlobal("location", new URL("http://localhost:4173/?room=old-custom-room"));
+    client = new MultiplayerClient(callbacks);
+    client.connect();
+    const legacy = FakeSocket.instances.at(-1)!;
+    legacy.open();
+    expect(JSON.parse(legacy.sent[0]!)).toMatchObject({ room: "auto" });
+  });
+  it("publishes bounded live room counts using catalog names and ignores invalid directories", () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    socket.receive({ type: "rooms", rooms: directory().map(room => ({ ...room, name: "untrusted display name" })) });
+    expect(callbacks.onPresence).toHaveBeenLastCalledWith(expect.objectContaining({
+      rooms: directory(),
+    }));
+    const before = vi.mocked(callbacks.onPresence).mock.calls.length;
+    for (const rooms of [
+      [{ ...directory()[0]!, count: 16 }],
+      [{ ...directory()[0]!, count: -1 }],
+      [{ ...directory()[0]!, capacity: 16 }],
+      [directory()[0]!, directory()[0]!],
+      [{ ...directory()[0]!, id: "made-up" }],
+    ]) socket.receive({ type: "rooms", rooms });
+    expect(callbacks.onPresence).toHaveBeenCalledTimes(before);
+    socket.receive({ type: "rooms", rooms: directory("sugi", 8) });
+    expect(callbacks.onPresence).toHaveBeenLastCalledWith(expect.objectContaining({ rooms: directory("sugi", 8) }));
+  });
+  it("moves on the same connection only after confirmation, preserving peers and ema until then", () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    welcome(socket);
+    expect(client.joinRoom("custom-room")).toBe(false);
+    expect(client.joinRoom("komorebi")).toBe(false);
+    expect(client.joinRoom("hinoki")).toBe(true);
+    expect(client.joinRoom("sugi")).toBe(false);
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: "switch-room", room: "hinoki" });
+    expect(callbacks.onPresence).toHaveBeenLastCalledWith(expect.objectContaining({
+      room: "komorebi", switchingTo: "hinoki", count: 2, peers: [expect.objectContaining({ id: "b" })],
+    }));
+    expect(callbacks.onLanterns).not.toHaveBeenCalled();
+    const sentBefore = socket.sent.length;
+    vi.advanceTimersByTime(200);
+    expect(client.pray()).toBe(false);
+    expect(client.reset()).toBe(false);
+    expect(socket.sent).toHaveLength(sentBefore);
+    welcome(socket, [visitor("a", -2), visitor("c", 2)], "hinoki");
+    expect(callbacks.onPresence).toHaveBeenLastCalledWith(expect.objectContaining({
+      room: "hinoki", switchingTo: null, state: "connected", peers: [expect.objectContaining({ id: "c" })],
+    }));
+    expect(callbacks.onSelf).toHaveBeenLastCalledWith(visitor("a", -2), "welcome");
+    expect(callbacks.onLanterns).toHaveBeenLastCalledWith(expect.objectContaining({ room: "hinoki", lanterns: [] }));
+    vi.advanceTimersByTime(100);
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({ type: "state", seq: 1 });
+    expect(vi.getTimerCount()).toBe(1);
+  });
+  it("retains the current room when a manual move is rejected and ignores unsolicited welcomes", () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    welcome(socket);
+    const selfCalls = vi.mocked(callbacks.onSelf).mock.calls.length;
+    welcome(socket, [visitor()], "sugi");
+    expect(callbacks.onSelf).toHaveBeenCalledTimes(selfCalls);
+    expect(client.joinRoom("hinoki")).toBe(true);
+    welcome(socket, [visitor()], "sugi");
+    expect(callbacks.onSelf).toHaveBeenCalledTimes(selfCalls);
+    socket.receive({ type: "error", code: "room_full", message: "この境内は満員です。" });
+    expect(client.connected).toBe(true);
+    expect(callbacks.onPresence).toHaveBeenLastCalledWith(expect.objectContaining({ room: "komorebi", state: "connected", switchingTo: null, count: 2 }));
+    expect(callbacks.onLanterns).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+    expect(client.joinRoom("sugi")).toBe(true);
+    socket.receive({ type: "error", code: "room_busy", message: "参拝を終えてから移動してください。" });
+    expect(client.connected).toBe(true);
+    expect(callbacks.onPresence).toHaveBeenLastCalledWith(expect.objectContaining({ room: "komorebi", switchingTo: null }));
+  });
+  it("times out a pending move into the last confirmed room and clears all move timers on disposal", () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    welcome(socket);
+    client.joinRoom("hinoki");
+    vi.advanceTimersByTime(8000);
+    expect(socket.readyState).toBe(3);
+    expect(client.connected).toBe(false);
+    vi.advanceTimersByTime(1300);
+    const reconnect = FakeSocket.instances[1]!;
+    reconnect.open();
+    expect(JSON.parse(reconnect.sent[0]!)).toMatchObject({ type: "join", room: "komorebi" });
+    welcome(reconnect);
+    client.joinRoom("sugi");
+    client.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("keeps automatic selection of the current room from resetting the avatar or sequence", () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    welcome(socket);
+    vi.advanceTimersByTime(200);
+    expect(client.joinRoom("auto")).toBe(true);
+    welcome(socket);
+    expect(callbacks.onSelf).toHaveBeenLastCalledWith(visitor(), "snapshot");
+    vi.advanceTimersByTime(100);
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({ type: "state", seq: 3 });
   });
 });
 

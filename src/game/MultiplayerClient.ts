@@ -1,9 +1,11 @@
 import {
-  DEFAULT_ROOM,
+  AUTO_ROOM,
   NETWORK_HZ,
   PROTOCOL_VERSION,
+  PUBLIC_ROOMS,
   ROOM_CAPACITY,
-  validRoom,
+  isPublicRoom,
+  validRoomTarget,
   validVisitor,
 } from "../shared/multiplayer";
 import { FREE_LANTERN_POLICY, validPublicLantern } from "../shared/lanterns";
@@ -31,9 +33,26 @@ function visitorKey() {
 import type {
   ClientMessage,
   Presence,
+  RoomSummary,
   ServerMessage,
   Visitor,
 } from "../shared/multiplayer";
+
+function roomDirectory(value: unknown): RoomSummary[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > PUBLIC_ROOMS.length) return null;
+  const ids = new Set<string>();
+  const result: RoomSummary[] = [];
+  for (const room of value) {
+    const entry = PUBLIC_ROOMS.find(candidate => candidate.id === room?.id);
+    if (!entry || ids.has(entry.id) ||
+      !Number.isInteger(room.count) || !Number.isInteger(room.capacity) ||
+      room.capacity < 1 || room.capacity > ROOM_CAPACITY ||
+      room.count < 0 || room.count > room.capacity) return null;
+    ids.add(entry.id);
+    result.push({ ...entry, count: room.count, capacity: room.capacity });
+  }
+  return PUBLIC_ROOMS.flatMap(room => result.filter(entry => entry.id === room.id));
+}
 
 export interface MultiplayerCallbacks {
   onProfile?: (profile: VisitorSummary) => void;
@@ -65,9 +84,11 @@ export class MultiplayerClient {
   private offset = 0;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private welcomeTimer?: ReturnType<typeof setTimeout>;
+  private switchTimer?: ReturnType<typeof setTimeout>;
   private sendTimer?: ReturnType<typeof setInterval>;
   private players: Visitor[] = [];
   private presence: Presence;
+  private requestedRoom: string;
   private onPageHide = () => {
     this.socket?.close(1000, "Page hidden");
   };
@@ -81,16 +102,19 @@ export class MultiplayerClient {
   };
   constructor(
     private callbacks: MultiplayerCallbacks,
-    room = new URLSearchParams(location.search).get("room") ?? DEFAULT_ROOM,
+    room = new URLSearchParams(location.search).get("room") ?? AUTO_ROOM,
   ) {
+    this.requestedRoom = validRoomTarget(room) ? room : AUTO_ROOM;
     this.presence = {
       state: "connecting",
-      room: validRoom(room) ? room : DEFAULT_ROOM,
+      room: this.requestedRoom,
       count: 1,
       capacity: ROOM_CAPACITY,
       selfId: null,
       selfName: "旅人",
       peers: [],
+      rooms: [],
+      switchingTo: null,
     };
     window.addEventListener("pagehide", this.onPageHide);
     window.addEventListener("pageshow", this.onPageShow);
@@ -105,6 +129,7 @@ export class MultiplayerClient {
     if (this.disposed || this.stopped) return;
     clearTimeout(this.reconnectTimer);
     clearTimeout(this.welcomeTimer);
+    this.clearSwitch();
     clearInterval(this.sendTimer);
     const previous = this.socket;
     if (previous) {
@@ -136,7 +161,7 @@ export class MultiplayerClient {
         this.send({
           type: "join",
           version: PROTOCOL_VERSION,
-          room: this.presence.room,
+          room: this.requestedRoom,
           visitorKey: this.visitorKey,
         });
     };
@@ -158,6 +183,7 @@ export class MultiplayerClient {
       this.cancelRequests();
       clearInterval(this.sendTimer);
       clearTimeout(this.welcomeTimer);
+      this.clearSwitch();
       this.players = [];
       this.callbacks.onPlayers([], this.serverNow);
       this.presence.count = 1;
@@ -170,6 +196,14 @@ export class MultiplayerClient {
   private receive(data: unknown) {
     if (!data || typeof data !== "object") return;
     const message = data as ServerMessage;
+    if (message.type === "rooms") {
+      const rooms = roomDirectory(message.rooms);
+      if (rooms) {
+        this.presence.rooms = rooms;
+        this.publish();
+      }
+      return;
+    }
     if (message.type === "profile") {
       if (this.welcomed && validVisitorSummary(message.profile))
         this.callbacks.onProfile?.(message.profile);
@@ -217,14 +251,20 @@ export class MultiplayerClient {
       return;
     }
     if (message.type === "error") {
+      if (typeof message.message !== "string") return;
       this.callbacks.onNotice(message.message);
+      if (this.welcomed && ["room_full", "server_full", "invalid_room", "room_busy"].includes(message.code)) {
+        this.clearSwitch();
+        this.publish();
+        return;
+      }
       if (
         ["room_full", "server_full", "invalid_room", "protocol"].includes(
           message.code,
         )
       ) {
         this.stopped = true;
-        this.presence.state = message.code === "room_full" ? "full" : "offline";
+        this.presence.state = ["room_full", "server_full"].includes(message.code) ? "full" : "offline";
         this.publish();
         this.socket?.close();
       }
@@ -250,11 +290,16 @@ export class MultiplayerClient {
       !message.players.every(validVisitor)
     )
       return;
+    let welcomeResetsPlayer = false;
     if (message.type === "welcome") {
+      const target = this.welcomed ? this.presence.switchingTo : this.requestedRoom;
+      const rooms = roomDirectory(message.rooms);
       if (
         message.version !== PROTOCOL_VERSION ||
-        !validRoom(message.room) ||
-        message.room !== this.presence.room ||
+        !isPublicRoom(message.room) ||
+        !target || (target !== AUTO_ROOM && message.room !== target) ||
+        !rooms || !rooms.some(room => room.id === message.room && room.capacity === message.capacity) ||
+        (this.welcomed && message.id !== this.presence.selfId) ||
         typeof message.id !== "string" ||
         !message.players.some((player) => player.id === message.id) ||
         !Number.isInteger(message.capacity) ||
@@ -262,19 +307,33 @@ export class MultiplayerClient {
         message.capacity > ROOM_CAPACITY
       )
         return;
+      const changedRoom = this.presence.room !== message.room;
+      welcomeResetsPlayer = !this.welcomed || changedRoom;
+      if (changedRoom) {
+        this.seq = 0;
+        this.callbacks.onLanterns?.({
+          room: message.room,
+          lanterns: [],
+          mineIds: [],
+          policy: { ...FREE_LANTERN_POLICY },
+        });
+      }
       this.welcomed = true;
       this.retry = 0;
+      this.requestedRoom = message.room;
       clearTimeout(this.welcomeTimer);
+      this.clearSwitch();
       this.presence = {
         ...this.presence,
         state: "connected",
         selfId: message.id,
         room: message.room,
         capacity: message.capacity,
+        rooms,
       };
       clearInterval(this.sendTimer);
       this.sendTimer = setInterval(() => {
-        if (!this.connected) return;
+        if (!this.connected || this.presence.switchingTo) return;
         const sample = this.callbacks.sample();
         this.send({
           type: "state",
@@ -295,7 +354,7 @@ export class MultiplayerClient {
       .map(({ id, name, tint }) => ({ id, name, tint }));
     this.callbacks.onSelf(
       self,
-      message.type === "welcome" ? "welcome" : "snapshot",
+      welcomeResetsPlayer ? "welcome" : "snapshot",
     );
     this.callbacks.onPlayers(
       this.players.filter((p) => p.id !== self.id),
@@ -312,6 +371,11 @@ export class MultiplayerClient {
       () => this.connect(),
       delay + Math.random() * 250,
     );
+  }
+  private clearSwitch() {
+    clearTimeout(this.switchTimer);
+    this.switchTimer = undefined;
+    this.presence.switchingTo = null;
   }
   private cancelRequests() {
     for (const pending of this.requests.values()) {
@@ -335,7 +399,7 @@ export class MultiplayerClient {
         }
       | { type: "lantern-remove" | "lantern-report"; id: string },
   ) {
-    if (!this.connected)
+    if (!this.connected || this.presence.switchingTo)
       return Promise.resolve({
         ok: false,
         message: "境内につながると、絵馬を掛けられます。",
@@ -383,32 +447,49 @@ export class MultiplayerClient {
     this.callbacks.onPresence({
       ...this.presence,
       peers: [...this.presence.peers],
+      rooms: this.presence.rooms.map(room => ({ ...room })),
     });
   }
   private send(message: ClientMessage) {
     if (
       this.socket?.readyState === WebSocket.OPEN &&
       this.socket.bufferedAmount < 16384
-    )
+    ) {
       this.socket.send(JSON.stringify(message));
+      return true;
+    }
+    return false;
   }
   pray() {
-    if (!this.connected) return false;
+    if (!this.connected || this.presence.switchingTo) return false;
     this.send({ type: "pray" });
     return true;
   }
   activity(activity: "fortune" | "ema") {
-    if (this.connected) this.send({ type: "activity", activity });
+    if (this.connected && !this.presence.switchingTo) this.send({ type: "activity", activity });
   }
   reset() {
-    if (!this.connected) return false;
+    if (!this.connected || this.presence.switchingTo) return false;
     this.send({ type: "reset" });
     return true;
   }
   joinRoom(room: string) {
-    if (!validRoom(room)) return false;
+    if (this.disposed || !validRoomTarget(room) || this.presence.switchingTo || this.requests.size) return false;
+    if (this.connected) {
+      if (room === this.presence.room) return false;
+      if (!this.send({ type: "switch-room", room })) return false;
+      this.presence.switchingTo = room;
+      this.switchTimer = setTimeout(() => {
+        this.clearSwitch();
+        this.callbacks.onNotice("移動を確認できませんでした。元の境内に接続し直します。");
+        this.socket?.close();
+      }, 8000);
+      this.publish();
+      return true;
+    }
     this.stopped = false;
     this.retry = 0;
+    this.requestedRoom = room;
     this.presence.room = room;
     this.presence.selfId = null;
     this.presence.count = 1;
@@ -431,6 +512,7 @@ export class MultiplayerClient {
     clearInterval(this.sendTimer);
     clearTimeout(this.reconnectTimer);
     clearTimeout(this.welcomeTimer);
+    this.clearSwitch();
     window.removeEventListener("pagehide", this.onPageHide);
     window.removeEventListener("pageshow", this.onPageShow);
     if (this.socket) {

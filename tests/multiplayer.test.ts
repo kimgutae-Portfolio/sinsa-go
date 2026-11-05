@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import { createShrineServer } from "../server/app";
 import type { ServerMessage, Visitor } from "../src/shared/multiplayer";
-import { PROTOCOL_VERSION } from "../src/shared/multiplayer";
+import { PROTOCOL_VERSION, PUBLIC_ROOMS, ROOM_CAPACITY } from "../src/shared/multiplayer";
 import { RITUAL_DURATION } from "../src/game/ritual";
 
 class Guest {
@@ -80,7 +80,7 @@ afterEach(async () => {
   guests = [];
   await app.close();
 });
-async function join(room = "test") {
+async function join(room = "komorebi") {
   const guest = new Guest(url);
   guests.push(guest);
   expect((await guest.join(room)).type).toBe("welcome");
@@ -108,6 +108,123 @@ function findPlayer(message: ServerMessage, id: string): Visitor {
 }
 
 describe("real WebSocket multiplayer", () => {
+  it("routes automatic arrivals to the next fixed room once eight visitors gather", async () => {
+    const arrivals = [];
+    for (let index = 0; index < 17; index++) {
+      const guest = await join("auto");
+      arrivals.push(guest.messages.find(message => message.type === "welcome"));
+    }
+    expect(arrivals.slice(0, 8)).toEqual(Array.from({ length: 8 }, () => expect.objectContaining({ room: "komorebi" })));
+    expect(arrivals.slice(8, 16)).toEqual(Array.from({ length: 8 }, () => expect.objectContaining({ room: "hinoki" })));
+    expect(arrivals[16]).toMatchObject({ room: "sugi", capacity: 15 });
+  });
+  it("uses the least occupied room when all rooms pass half capacity, and rejects only when all are full", async () => {
+    for (const room of PUBLIC_ROOMS)
+      for (let index = 0; index < 8; index++) await join(room.id);
+    await join("komorebi");
+    const balanced = await join("auto");
+    expect(balanced.messages.find(message => message.type === "welcome")).toMatchObject({ room: "hinoki" });
+    for (const room of PUBLIC_ROOMS) {
+      while ((app.rooms.rooms.get(room.id)?.size ?? 0) < ROOM_CAPACITY) await join(room.id);
+    }
+    const extra = new Guest(url);
+    guests.push(extra);
+    expect(await extra.join("auto")).toMatchObject({ type: "error", code: "server_full" });
+  }, 15000);
+  it("publishes all fixed rooms including empty rooms and updates other rooms on arrivals and departures", async () => {
+    const observer = new Guest(url);
+    guests.push(observer);
+    const initial = await observer.wait(message => message.type === "rooms");
+    expect(initial).toMatchObject({ type: "rooms", rooms: PUBLIC_ROOMS.map(room => ({ ...room, count: 0, capacity: 15 })) });
+    const cursor = observer.messages.length;
+    const guest = await join("hinoki");
+    const arrived = await observer.wait(message => message.type === "rooms" && message.rooms.find(room => room.id === "hinoki")?.count === 1, cursor);
+    expect(JSON.stringify(arrived)).not.toContain("ownerHash");
+    const next = observer.messages.length;
+    guest.socket.terminate();
+    await observer.wait(message => message.type === "rooms" && message.rooms.every(room => room.count === 0), next);
+  });
+  it("does not create rooms from user-supplied names or accept the previous protocol", async () => {
+    const custom = new Guest(url);
+    guests.push(custom);
+    expect(await custom.join("custom-garden")).toMatchObject({ type: "error", code: "invalid_room" });
+    expect(app.rooms.rooms.size).toBe(0);
+    const old = new Guest(url);
+    guests.push(old);
+    await new Promise<void>(resolve => old.socket.once("open", resolve));
+    old.send({ type: "join", version: PROTOCOL_VERSION - 1, room: "komorebi" });
+    expect(await old.wait(message => message.type === "error")).toMatchObject({ code: "protocol" });
+  });
+  it("moves on the existing connection with the same identity and without inflating visitor counters", async () => {
+    const a = new Guest(url);
+    guests.push(a);
+    await a.join("komorebi", "moving_owner_abcdefghijklmnopqrstuvwxyz");
+    const b = await join("komorebi");
+    const c = await join("hinoki");
+    const first = await a.wait(message => message.type === "profile");
+    if (first.type !== "profile") throw Error("Expected profile");
+    const originalId = a.id;
+    await move(a, 1, 0.4, 1.5);
+    const cursor = a.messages.length;
+    const oldCursor = b.messages.length;
+    const nextCursor = c.messages.length;
+    a.send({ type: "switch-room", room: "hinoki" });
+    const welcome = await a.wait(message => message.type === "welcome", cursor);
+    expect(welcome).toMatchObject({ id: originalId, room: "hinoki" });
+    expect(findPlayer(welcome, a.id)).toMatchObject({ x: 2, z: 1.5, motion: "Idle" });
+    await b.wait(message => message.type === "snapshot" && message.players.length === 1 && message.players[0]?.id === b.id, oldCursor);
+    await c.wait(message => message.type === "snapshot" && message.players.some(player => player.id === a.id), nextCursor);
+    const profile = await a.wait(message => message.type === "profile", cursor);
+    expect(profile.type === "profile" && profile.profile).toMatchObject({ visitorId: first.profile.visitorId, lastRoom: "hinoki", connectionCount: 1, visitCount: 1 });
+    expect(a.socket.readyState).toBe(WebSocket.OPEN);
+    const stateCursor = a.messages.length;
+    a.send({ type: "state", seq: 1, x: 2.4, z: 1.5, yaw: Math.PI, motion: "Walk" });
+    await a.wait(message => message.type === "snapshot" && message.players.some(player => player.id === a.id && player.x === 2.4), stateCursor);
+    const repeatCursor = a.messages.length;
+    a.send({ type: "switch-room", room: "sugi" });
+    expect(await a.wait(message => message.type === "error", repeatCursor)).toMatchObject({ code: "room_busy" });
+    expect([...app.rooms.sessions].find(session => session.player.id === a.id)?.room).toBe("hinoki");
+    clock += 1000;
+    const laterCursor = a.messages.length;
+    a.send({ type: "switch-room", room: "sugi" });
+    expect(await a.wait(message => message.type === "welcome", laterCursor)).toMatchObject({ room: "sugi", id: originalId });
+  });
+  it("keeps a visitor in their current room when a target is full or invalid", async () => {
+    await Promise.all(Array.from({ length: ROOM_CAPACITY }, () => join("komorebi")));
+    const a = await join("hinoki");
+    const before = findPlayer(a.messages.find(message => message.type === "welcome")!, a.id);
+    let cursor = a.messages.length;
+    a.send({ type: "switch-room", room: "komorebi" });
+    expect(await a.wait(message => message.type === "error", cursor)).toMatchObject({ code: "room_full" });
+    cursor = a.messages.length;
+    a.send({ type: "switch-room", room: "my-private-room" });
+    expect(await a.wait(message => message.type === "error", cursor)).toMatchObject({ code: "invalid_room" });
+    const session = [...app.rooms.sessions].find(session => session.player.id === a.id)!;
+    expect(session.room).toBe("hinoki");
+    expect(session.player).toEqual(before);
+    expect(a.socket.readyState).toBe(WebSocket.OPEN);
+    expect(app.rooms.rooms.get("hinoki")?.size).toBe(1);
+    expect(app.rooms.rooms.get("komorebi")?.size).toBe(15);
+  });
+  it("refuses a room change during prayer but leaves the ritual intact", async () => {
+    const a = await join();
+    await move(a, 1, 0, 0.5);
+    await move(a, 2, 0, -0.5);
+    await move(a, 3, 0, -1.5);
+    a.send({ type: "pray" });
+    const ritual = await a.wait(message => message.type === "correction" && message.player.motion === "Pray");
+    const sameCursor = a.messages.length;
+    a.send({ type: "switch-room", room: "komorebi" });
+    const sameRoom = await a.wait(message => message.type === "welcome", sameCursor);
+    expect(findPlayer(sameRoom, a.id).motion).toBe("Pray");
+    const cursor = a.messages.length;
+    a.send({ type: "switch-room", room: "hinoki" });
+    expect(await a.wait(message => message.type === "error", cursor)).toMatchObject({ code: "room_busy" });
+    const session = [...app.rooms.sessions].find(session => session.player.id === a.id)!;
+    expect(session.room).toBe("komorebi");
+    expect(session.player.motion).toBe("Pray");
+    expect(session.player.ritualStartedAt).toBe(ritual.type === "correction" && ritual.player.ritualStartedAt);
+  });
   it("shows new and late visitors in the same room with distinct identities and spawns", async () => {
     const a = await join();
     const b = await join();
@@ -139,8 +256,8 @@ describe("real WebSocket multiplayer", () => {
     expect(findPlayer(packet, a.id).motion).toBe("Walk");
   });
   it("keeps different rooms isolated", async () => {
-    const a = await join("forest");
-    const b = await join("courtyard");
+    const a = await join("hinoki");
+    const b = await join("sugi");
     expect(
       findPlayer(
         b.messages.find((m) => m.type === "welcome")!,
@@ -156,21 +273,21 @@ describe("real WebSocket multiplayer", () => {
     b.send({ type: "state", seq: 1, x: 0.4, z: 1.5, yaw: 0, motion: "Walk" });
     expect(app.rooms.rooms.size).toBe(2);
   });
-  it("accepts 12 visitors and rejects the thirteenth without silently switching rooms", async () => {
+  it("accepts 15 visitors and rejects the sixteenth without silently switching rooms", async () => {
     const all = await Promise.all(
-      Array.from({ length: 12 }, () => join("busy")),
+      Array.from({ length: 15 }, () => join("komorebi")),
     );
-    expect(app.rooms.rooms.get("busy")?.size).toBe(12);
+    expect(app.rooms.rooms.get("komorebi")?.size).toBe(15);
     const extra = new Guest(url);
     guests.push(extra);
-    const response = await extra.join("busy");
+    const response = await extra.join("komorebi");
     expect(response.type === "error" && response.code).toBe("room_full");
     const roster = await all[0]!.wait(
-      (m) => m.type === "snapshot" && m.players.length === 12,
+      (m) => m.type === "snapshot" && m.players.length === 15,
     );
     expect(
       "players" in roster && new Set(roster.players.map((p) => p.id)).size,
-    ).toBe(12);
+    ).toBe(15);
   });
   it("removes a disconnected visitor and reuses only their vacant spawn", async () => {
     const a = await join();
@@ -316,7 +433,7 @@ describe("real WebSocket multiplayer", () => {
     const good = await join();
     const abusive = new Guest(url);
     guests.push(abusive);
-    await abusive.join("other");
+    await abusive.join("hinoki");
     const closed = new Promise<void>((done) =>
       abusive.socket.once("close", () => done()),
     );
@@ -332,10 +449,10 @@ describe("real WebSocket multiplayer", () => {
     const key = "lantern_owner_abcdefghijklmnopqrstuvwxyz";
     const a = new Guest(url);
     guests.push(a);
-    await a.join("lights", key);
+    await a.join("komorebi", key);
     const b = new Guest(url);
     guests.push(b);
-    await b.join("lights", "lantern_other_abcdefghijklmnopqrstuvwxyz");
+    await b.join("komorebi", "lantern_other_abcdefghijklmnopqrstuvwxyz");
     a.send({
       type: "lantern-hang",
       requestId: "request_far",
@@ -414,7 +531,7 @@ describe("real WebSocket multiplayer", () => {
     await departed;
     const rejoined = new Guest(url);
     guests.push(rejoined);
-    await rejoined.join("lights", key);
+    await rejoined.join("komorebi", key);
     const restored = await rejoined.wait(
       (m) => m.type === "lanterns" && m.mineIds.length === 1,
     );
@@ -443,12 +560,12 @@ describe("real WebSocket multiplayer", () => {
     const key = "stats_owner_abcdefghijklmnopqrstuvwxyz";
     const a = new Guest(url);
     guests.push(a);
-    await a.join("history", key);
+    await a.join("komorebi", key);
     const first = await a.wait((m) => m.type === "profile");
     if (first.type !== "profile") throw Error("Expected profile");
     const b = new Guest(url);
     guests.push(b);
-    await b.join("history", "stats_other_abcdefghijklmnopqrstuvwxyz");
+    await b.join("komorebi", "stats_other_abcdefghijklmnopqrstuvwxyz");
     await b.wait((m) => m.type === "profile");
     expect(
       b.messages.some(
@@ -471,7 +588,7 @@ describe("real WebSocket multiplayer", () => {
     clock += 1000;
     const again = new Guest(url);
     guests.push(again);
-    await again.join("other-history", key);
+    await again.join("hinoki", key);
     const restored = await again.wait(
       (m) => m.type === "profile" && m.profile.connectionCount === 2,
     );
@@ -479,7 +596,7 @@ describe("real WebSocket multiplayer", () => {
       visitorId: first.profile.visitorId,
       visitCount: 1,
       connectionCount: 2,
-      lastRoom: "other-history",
+      lastRoom: "hinoki",
     });
     again.send({ type: "profile", profile: { prayerCount: 9999 } });
     clock += 10000;
@@ -491,7 +608,7 @@ describe("real WebSocket multiplayer", () => {
   it("counts only completed server rituals once and excludes cancelled or remote prayers", async () => {
     const a = new Guest(url);
     guests.push(a);
-    await a.join("ritual-records", "ritual_owner_abcdefghijklmnopqrstuvwxyz");
+    await a.join("komorebi", "ritual_owner_abcdefghijklmnopqrstuvwxyz");
     a.send({ type: "pray" });
     await a.wait((m) => m.type === "error");
     await move(a, 1, 0, 0.5);
@@ -531,7 +648,7 @@ describe("real WebSocket multiplayer", () => {
   it("validates proximity and cooldown for fortune and ema statistics instead of accepting client totals", async () => {
     const a = new Guest(url);
     guests.push(a);
-    await a.join("activities", "activity_owner_abcdefghijklmnopqrstuvwxyz");
+    await a.join("komorebi", "activity_owner_abcdefghijklmnopqrstuvwxyz");
     a.send({ type: "activity", activity: "fortune", count: 999 });
     await move(a, 1, -1.3, 1.5);
     await move(a, 2, -2.6, 1.5);

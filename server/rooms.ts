@@ -6,17 +6,20 @@ import { WebSocket } from "ws";
 import {
   PROTOCOL_VERSION,
   ROOM_CAPACITY,
+  AUTO_ROOM,
+  PUBLIC_ROOMS,
   VISITOR_COLORS,
   PRAYER_SPOTS,
   spawnPosition,
   validPosition,
-  validRoom,
+  validRoomTarget,
   validTravel,
 } from "../src/shared/multiplayer";
 import type {
   Position,
   ServerMessage,
   Visitor,
+  RoomSummary,
 } from "../src/shared/multiplayer";
 import { ALIGN_DURATION, RITUAL_DURATION } from "../src/game/ritual";
 import { OFFERING_LAYOUT } from "../src/game/layout";
@@ -35,6 +38,7 @@ interface Session {
   tokens: number;
   tokenTime: number;
   lastReset: number;
+  lastRoomChange: number;
   alive: boolean;
   joinTimer?: ReturnType<typeof setTimeout>;
 }
@@ -58,13 +62,15 @@ export class ShrineRooms {
   readonly rooms = new Map<string, Set<Session>>();
   readonly sessions = new Set<Session>();
   readonly capacity: number;
+  private catalog: typeof PUBLIC_ROOMS[number][];
   private now: () => number;
   private tickTimer: ReturnType<typeof setInterval>;
   private heartbeat: ReturnType<typeof setInterval>;
   constructor(private options: RoomOptions = {}) {
     this.stats = options.stats ?? new VisitorStatsService();
     this.lanterns = options.lanterns ?? new LanternService();
-    this.capacity = options.capacity ?? ROOM_CAPACITY;
+    this.capacity = Math.min(ROOM_CAPACITY, Math.max(1, Math.floor(options.capacity ?? ROOM_CAPACITY)));
+    this.catalog = PUBLIC_ROOMS.slice(0, Math.max(1, Math.min(PUBLIC_ROOMS.length, Math.floor(options.maxRooms ?? PUBLIC_ROOMS.length))));
     this.now = options.now ?? Date.now;
     this.tickTimer = setInterval(() => this.tick(), 100);
     this.heartbeat = setInterval(() => {
@@ -94,6 +100,112 @@ export class ShrineRooms {
   ) {
     this.send(socket, { type: "error", code, message });
   }
+  directory(): RoomSummary[] {
+    return this.catalog.map(room => ({
+      ...room,
+      count: this.rooms.get(room.id)?.size ?? 0,
+      capacity: this.capacity,
+    }));
+  }
+  private broadcastDirectory() {
+    if (this.closing) return;
+    const message: ServerMessage = { type: "rooms", rooms: this.directory() };
+    for (const session of this.sessions) this.send(session.socket, message);
+  }
+  private resolveRoom(target: string) {
+    if (target !== AUTO_ROOM) return target;
+    const available = this.directory().filter(room => room.count < room.capacity);
+    return (
+      available.find(room => room.count < Math.ceil(this.capacity / 2)) ??
+      available.reduce<RoomSummary | undefined>((best, room) => !best || room.count < best.count ? room : best, undefined)
+    )?.id;
+  }
+  private welcome(session: Session, now: number) {
+    this.send(session.socket, {
+      type: "welcome",
+      version: PROTOCOL_VERSION,
+      id: session.player.id,
+      room: session.room,
+      capacity: this.capacity,
+      serverTime: now,
+      players: this.players(session.room),
+      rooms: this.directory(),
+    });
+  }
+  private enterRoom(session: Session, target: unknown, now: number) {
+    const initial = !session.room;
+    if (!validRoomTarget(target) || (target !== AUTO_ROOM && !this.catalog.some(room => room.id === target))) {
+      this.error(session.socket, "invalid_room", "境内の一覧からお選びください。");
+      if (initial) session.socket.close(1008);
+      return;
+    }
+    const id = this.resolveRoom(target);
+    if (!id) {
+      this.error(session.socket, "server_full", "ただいま、すべての境内が満員です。少しお待ちください。");
+      if (initial) session.socket.close(1013);
+      return;
+    }
+    if (id === session.room) {
+      this.welcome(session, now);
+      return;
+    }
+    const next = this.rooms.get(id) ?? new Set<Session>();
+    if (next.size >= this.capacity) {
+      this.error(session.socket, "room_full", "この境内は満員です。別の境内をお選びください。");
+      if (initial) session.socket.close(1008);
+      return;
+    }
+    if (!initial && (session.player.motion === "Pray" || session.lanternPending)) {
+      this.error(session.socket, "room_busy", "参拝や絵馬の操作を終えてから、境内をお移りください。");
+      return;
+    }
+    if (!initial && now - session.lastRoomChange < 1000) {
+      this.error(session.socket, "room_busy", "少し間をおいてから、次の境内をお選びください。");
+      return;
+    }
+    // Reserve and validate the destination before removing the current membership.
+    const previous = session.room;
+    const oldRoom = this.rooms.get(previous);
+    oldRoom?.delete(session);
+    if (oldRoom?.size === 0) {
+      this.rooms.delete(previous);
+      this.lanternSignatures.delete(previous);
+    }
+    this.rooms.set(id, next);
+    session.room = id;
+    const used = new Set([...next].map(player => player.slot));
+    let slot = 0;
+    while (used.has(slot)) slot++;
+    session.slot = slot;
+    session.seq = -1;
+    session.lastUpdate = now;
+    session.moveBudget = 1.5;
+    session.lastReset = 0;
+    session.lastActivities = {};
+    session.player = {
+      ...session.player,
+      ...spawnPosition(slot),
+      name: `旅人 ${String(slot + 1).padStart(2, "0")}`,
+      tint: VISITOR_COLORS[slot % VISITOR_COLORS.length]!,
+      motion: "Idle",
+      ritualStartedAt: null,
+      ritualFrom: null,
+      ritualTarget: null,
+    };
+    next.add(session);
+    if (initial) this.stats.begin(session.ownerHash, session.player.id, id, now);
+    else {
+      session.lastRoomChange = now;
+      this.stats.moveRoom(session.player.id, id, now);
+    }
+    clearTimeout(session.joinTimer);
+    this.welcome(session, now);
+    if (previous) this.broadcast(previous);
+    this.broadcast(id);
+    this.broadcastDirectory();
+    this.sendLanterns(session);
+    this.publishProfile(session.ownerHash);
+  }
   connect(socket: WebSocket) {
     if (this.sessions.size >= (this.options.maxConnections ?? 256)) {
       this.error(
@@ -118,6 +230,7 @@ export class ShrineRooms {
       tokens: 40,
       tokenTime: time,
       lastReset: 0,
+      lastRoomChange: -Infinity,
       alive: true,
       player: {
         ...spawnPosition(0),
@@ -176,7 +289,9 @@ export class ShrineRooms {
       if (!this.rooms.has(session.room))
         this.lanternSignatures.delete(session.room);
       else if (room) this.broadcast(session.room);
+      this.broadcastDirectory();
     });
+    this.send(socket, { type: "rooms", rooms: this.directory() });
   }
   private receive(
     session: Session,
@@ -194,39 +309,6 @@ export class ShrineRooms {
         session.socket.close(1008);
         return;
       }
-      if (!validRoom(data.room)) {
-        this.error(
-          session.socket,
-          "invalid_room",
-          "ルーム名は半角英小文字・数字・_・-の1〜32文字で入力してください。",
-        );
-        session.socket.close(1008);
-        return;
-      }
-      let room = this.rooms.get(data.room);
-      if (!room && this.rooms.size >= (this.options.maxRooms ?? 32)) {
-        this.error(
-          session.socket,
-          "server_full",
-          "ただいま新しいルームをひらけません。しばらくしてからお試しください。",
-        );
-        session.socket.close(1013);
-        return;
-      }
-      if (room && room.size >= this.capacity) {
-        this.error(
-          session.socket,
-          "room_full",
-          "このルームは満員です。別のルーム名でお入りください。",
-        );
-        session.socket.close(1008);
-        return;
-      }
-      if (!room) {
-        room = new Set();
-        this.rooms.set(data.room, room);
-      }
-      session.room = data.room;
       if (
         typeof data.visitorKey === "string" &&
         /^[a-zA-Z0-9_-]{32,128}$/.test(data.visitorKey)
@@ -234,34 +316,14 @@ export class ShrineRooms {
         session.ownerHash = createHash("sha256")
           .update(data.visitorKey)
           .digest("hex");
-      const used = new Set([...room].map((p) => p.slot));
-      let slot = 0;
-      while (used.has(slot)) slot++;
-      session.slot = slot;
-      session.player = {
-        ...session.player,
-        ...spawnPosition(slot),
-        name: `旅人 ${String(slot + 1).padStart(2, "0")}`,
-        tint: VISITOR_COLORS[slot % VISITOR_COLORS.length]!,
-      };
-      room.add(session);
-      this.stats.begin(session.ownerHash, session.player.id, session.room, now);
-      clearTimeout(session.joinTimer);
-      this.send(session.socket, {
-        type: "welcome",
-        version: PROTOCOL_VERSION,
-        id: session.player.id,
-        room: session.room,
-        capacity: this.capacity,
-        serverTime: now,
-        players: this.players(session.room),
-      });
-      this.broadcast(session.room);
-      this.sendLanterns(session);
-      this.publishProfile(session.ownerHash);
+      this.enterRoom(session, data.room, now);
       return;
     }
     this.advance(session, now);
+    if (data.type === "switch-room") {
+      this.enterRoom(session, data.room, now);
+      return;
+    }
     if (
       data.type === "lantern-hang" ||
       data.type === "lantern-remove" ||
