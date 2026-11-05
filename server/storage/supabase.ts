@@ -6,6 +6,19 @@ import type { StoredVisitor, VisitorRepository } from "../visitors/repository";
 import type { StoredLantern, LanternRepository } from "../lanterns/repository";
 
 export interface SupabaseConfig { url: string; key: string }
+/** Only HTTP status and an allowlisted database code leave the upstream boundary. */
+export class ShrineDatabaseError extends Error {
+  readonly code: string | undefined;
+  constructor(readonly status: number, code?: unknown) {
+    const safeCode = typeof code === "string" && /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(code) ? code : undefined;
+    const statusLabel = `HTTP ${status}${safeCode ? ` (${safeCode})` : ""}`;
+    super(status === 409 && (!safeCode || safeCode === "PT409")
+      ? `Shrine database revision conflict: ${statusLabel}. Run only one game server; restart before retrying.`
+      : `Shrine database ${statusLabel}. Check credentials and the shrine migration.`);
+    this.name = "ShrineDatabaseError";
+    this.code = safeCode;
+  }
+}
 export function supabaseConfig(env: NodeJS.ProcessEnv = process.env): SupabaseConfig {
   const url = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
   const key = env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY;
@@ -67,8 +80,12 @@ export class ShrineDatabase {
       });
     } catch { throw new Error("Shrine database connection failed; no file-storage fallback was used."); }
     if (!response.ok) {
-      if (response.status === 409) throw new Error("Shrine database revision conflict. Run only one game server; restart before retrying.");
-      throw new Error(`Shrine database HTTP ${response.status}. Check credentials and the shrine migration.`);
+      let code: unknown;
+      try {
+        const payload: unknown = await response.json();
+        if (payload && typeof payload === "object" && !Array.isArray(payload)) code = (payload as Row).code;
+      } catch { /* Non-JSON errors carry no diagnostic code. Never retain the body. */ }
+      throw new ShrineDatabaseError(response.status, code);
     }
     return response;
   }

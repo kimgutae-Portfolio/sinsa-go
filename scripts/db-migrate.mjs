@@ -19,7 +19,7 @@ if (Object.values(collision[0]).some(Boolean)) {
   if (!Object.values(collision[0]).every(Boolean)) throw new Error("Partial shrine namespace collision; setup refused.");
   const version = await managementQuery("select kind, schema_version from public.shrine_storage_state order by kind");
   if (version.length !== 2 || version.some(row => row.schema_version !== 1)) throw new Error("Unknown existing shrine schema; setup refused.");
-  console.log("Shrine schema v1 is already present; no migration was applied.");
+  console.log("Shrine schema v1 is already present; existing tables were retained.");
 } else {
   const sql = await readFile(new URL('../supabase/migrations/202611040001_shrine_storage.sql', import.meta.url), 'utf8');
   await managementQuery(sql, false);
@@ -28,6 +28,12 @@ if (Object.values(collision[0]).some(Boolean)) {
     throw new Error("Existing service metadata changed during setup. Inspect concurrent schema changes before proceeding.");
   console.log("Created only shrine_* objects. Existing service table definitions and permissions are unchanged.");
 }
+// Function-only repair: synchronize ema by id while keeping safeupdate enabled.
+const emaSyncSql = await readFile(new URL('../supabase/migrations/202611050001_shrine_ema_snapshot_sync.sql', import.meta.url), 'utf8');
+await managementQuery(emaSyncSql, false);
+if (JSON.stringify(before) !== JSON.stringify(await managementQuery(metadata)))
+  throw new Error("Existing service metadata changed during the shrine repair. Inspect concurrent schema changes before proceeding.");
+console.log("Updated only shrine_save_state for safe ema synchronization; no existing records were changed.");
 const security = await managementQuery(`select c.relname, c.relrowsecurity as rls,
  has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE') as anon_access,
  has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE') as authenticated_access

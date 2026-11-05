@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ShrineDatabase, supabaseConfig, openSupabaseRepositories, encodeRecord } from "../server/storage/supabase";
+import { ShrineDatabase, ShrineDatabaseError, supabaseConfig, openSupabaseRepositories, encodeRecord } from "../server/storage/supabase";
 import { emptyVisitorCounters } from "../src/shared/visitorStats";
 import type { StoredVisitor } from "../server/visitors/repository";
 import type { StoredLantern } from "../server/lanterns/repository";
@@ -127,5 +127,29 @@ describe("Supabase shrine persistence", () => {
     expect(error.message).toContain('HTTP 500');
     expect(error.message).not.toContain('private');
     expect(error.message).not.toContain(config.key);
+  });
+  it.each(['23514', '42501', '42883', 'PGRST202'])("retains only HTTP status and a safe database code %s", async code => {
+    const s = setup();
+    s.fetcher.mockResolvedValueOnce(Response.json({ code,
+      message: `private wish and ${config.key}`, details: 'private signature', hint: config.url,
+    }, { status: 400 }));
+    const error = await s.database.revision('lanterns').catch(error => error);
+    expect(error).toBeInstanceOf(ShrineDatabaseError);
+    expect(error).toMatchObject({ status: 400, code });
+    const diagnostic = `${error.message} ${JSON.stringify(error)}`;
+    expect(diagnostic).toContain(code);
+    for (const secret of ['private wish', 'private signature', config.key, config.url])
+      expect(diagnostic).not.toContain(secret);
+  });
+  it("discards unsafe upstream codes and distinguishes uniqueness failures from revision fencing", async () => {
+    const s = setup();
+    s.fetcher.mockResolvedValueOnce(Response.json({ code: `23514 ${config.key}`, message: 'private wish' }, { status: 400 }));
+    const unsafe = await s.database.revision('lanterns').catch(error => error);
+    expect(unsafe).toMatchObject({ status: 400, code: undefined });
+    expect(unsafe.message).not.toContain(config.key);
+    s.fetcher.mockResolvedValueOnce(Response.json({ code: '23505', details: 'private signature' }, { status: 409 }));
+    const duplicate = await s.database.revision('lanterns').catch(error => error);
+    expect(duplicate.message).toContain('HTTP 409 (23505)');
+    expect(duplicate.message).not.toContain('revision conflict');
   });
 });

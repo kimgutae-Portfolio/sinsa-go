@@ -7,6 +7,7 @@ import {
   MAX_WISH_LENGTH,
 } from "../../src/shared/lanterns";
 import { REPORT_THRESHOLD, wishProblem } from "../../src/shared/moderation";
+import { ShrineDatabaseError } from "../storage/supabase";
 import type {
   LanternPolicy,
   LanternState,
@@ -111,6 +112,12 @@ export class LanternService {
   reportCount(id: string) {
     return this.reports.get(id)?.size ?? 0;
   }
+  private reportStorageError(error: unknown) {
+    console.error(
+      "Ema storage operation failed.",
+      error instanceof ShrineDatabaseError ? error.message : "Storage operation failed.",
+    );
+  }
   private async commit(command: Command, now: number): Promise<LanternResult> {
     const fail = (code: string, message: string): LanternResult => ({
       ok: false,
@@ -125,7 +132,8 @@ export class LanternService {
       const next = active.filter((record) => record.id !== item.id);
       try {
         await this.repository.save(next);
-      } catch {
+      } catch (error) {
+        this.reportStorageError(error);
         return fail(
           "storage",
           "絵馬を外せませんでした。しばらくしてからお試しください。",
@@ -270,7 +278,8 @@ export class LanternService {
     const next = [...active, record];
     try {
       await this.repository.save(next);
-    } catch {
+    } catch (error) {
+      this.reportStorageError(error);
       return fail(
         "storage",
         "絵馬を保存できませんでした。しばらくしてからお試しください。",

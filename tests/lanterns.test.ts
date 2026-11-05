@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { LanternService } from "../server/lanterns/service";
+import { ShrineDatabaseError } from "../server/storage/supabase";
 import {
   FileLanternRepository,
   MemoryLanternRepository,
@@ -160,6 +161,7 @@ describe("lantern issuance and future paid phase", () => {
     ).toMatchObject({ ok: true });
   });
   it("does not publish or consume a slot when persistence fails", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const repo = new MemoryLanternRepository();
     const save = vi
       .spyOn(repo, "save")
@@ -172,6 +174,24 @@ describe("lantern issuance and future paid phase", () => {
     expect(service.state("garden", owner("a"), now).lanterns).toHaveLength(0);
     expect(await service.execute(hang(), now)).toMatchObject({ ok: true });
     expect(save).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith("Ema storage operation failed.", "Storage operation failed.");
+  });
+  it("logs only safe storage diagnostics while keeping browser errors and wishes private", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const repo = new MemoryLanternRepository();
+    vi.spyOn(repo, "save")
+      .mockRejectedValueOnce(new ShrineDatabaseError(400, "23514"))
+      .mockRejectedValueOnce(new Error("private wish private signature secret-key"));
+    const service = new LanternService(repo);
+    const command = { ...hang(), wish: "private wish", signature: "private name" };
+    for (let index = 0; index < 2; index++) {
+      expect(await service.execute(command, now)).toEqual({ ok: false, code: "storage",
+        message: "絵馬を保存できませんでした。しばらくしてからお試しください。" });
+    }
+    expect(log.mock.calls[0]).toEqual(["Ema storage operation failed.", expect.stringContaining("HTTP 400 (23514)")]);
+    expect(log.mock.calls[1]).toEqual(["Ema storage operation failed.", "Storage operation failed."]);
+    for (const secret of [command.wish, command.signature, "private signature", "secret-key"])
+      expect(JSON.stringify(log.mock.calls)).not.toContain(secret);
   });
   it("retains lanterns and private ownership across server restarts and fails closed on a corrupt store", async () => {
     directory = await mkdtemp(join(tmpdir(), "shrine-lanterns-"));
