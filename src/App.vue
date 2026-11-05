@@ -5,6 +5,7 @@ import TouchJoystick from "./components/TouchJoystick.vue";
 import Icon from "./components/Icon.vue";
 import SoundControls from "./components/SoundControls.vue";
 import EmaPanel from "./components/EmaPanel.vue";
+import OmikujiSlip from "./components/OmikujiSlip.vue";
 import { FREE_LANTERN_POLICY, type LanternState } from "./shared/lanterns";
 import type { VisitorSummary } from "./shared/visitorStats";
 import type {
@@ -278,7 +279,12 @@ watch(modal, async (value, oldValue) => {
   }
   await nextTick();
   if (modal.value !== value) return;
-  if (value) dialog.value?.focus();
+  if (value) {
+    const target = value === "fortune"
+      ? dialog.value?.querySelector<HTMLElement>(".fortune-slip-content")
+      : dialog.value;
+    target?.focus();
+  }
   else if (previousFocus?.isConnected) previousFocus.focus();
   else document.querySelector<HTMLButtonElement>(".help-button")?.focus();
 });
@@ -722,36 +728,11 @@ onBeforeUnmount(() => {
                 境内に戻る<Icon name="arrow" :size="18" />
               </button>
             </template>
-            <template v-else-if="modal === 'fortune'">
-              <div class="eyebrow fortune-caption"><span>こもれび神社</span><span>御神籤</span></div>
-              <h2 id="dialog-title" class="fortune-title">
-                {{ fortune.title }}
-              </h2>
-              <span class="fortune-reading">{{ fortune.reading }}</span>
-              <div class="fortune-rule" aria-hidden="true"><span></span></div>
-              <h3>{{ fortune.message }}</h3>
-              <p class="fortune-description">{{ fortune.detail }}</p>
-              <dl class="fortune-details">
-                <div>
-                  <dt>願いごと</dt>
-                  <dd>{{ fortune.wish }}</dd>
-                </div>
-                <div>
-                  <dt>幸運の色</dt>
-                  <dd>{{ fortune.color }}</dd>
-                </div>
-                <div>
-                  <dt>おすすめ</dt>
-                  <dd>{{ fortune.item }}</dd>
-                </div>
-              </dl>
-              <p class="fortune-footnote">
-                運勢は、日々の心がけの参考に。
-              </p>
-              <button class="primary-button" @click="modal = null">
-                境内に戻る<Icon name="arrow" :size="17" />
-              </button>
-            </template>
+            <OmikujiSlip
+              v-else-if="modal === 'fortune'"
+              :fortune="fortune"
+              @close="modal = null"
+            />
           </section>
         </div>
       </Transition>

@@ -142,19 +142,28 @@
 .modal-dialog .help-list strong { font-family: var(--shrine-mincho); font-size: 15px; color: var(--shrine-ink); letter-spacing: .06em; font-weight: 500; margin-bottom: 8px; }
 .modal-dialog .help-list p { color: var(--shrine-secondary); font-size: 12px; line-height: 2; }
 
-.fortune-dialog { flex-basis: 392px; width: 392px; border-top: 1px solid #c9c3b5; text-align: center; }
+.modal-dialog.fortune-dialog { display: flex; flex-direction: column; flex-basis: 460px; width: 460px; padding: 50px 0 0; overflow: hidden; border-top: 1px solid #c9c3b5; text-align: center; }
+.fortune-slip-content { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 8px 34px 30px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #bdb8aa transparent; }
+.fortune-slip-content:focus { outline: none; }
+.fortune-slip-content:focus-visible { outline: 2px solid var(--shrine-red); outline-offset: -4px; }
+.fortune-dialog > .modal-close { z-index: 2; background: var(--shrine-paper); }
+.fortune-heading { position: relative; }
 .modal-dialog .eyebrow.fortune-caption { justify-content: space-between; font-family: var(--shrine-mincho); font-size: 12px; }
-.fortune-caption > span:last-child { writing-mode: vertical-rl; letter-spacing: .2em; border: 1px solid #8b443655; padding: 7px 5px; }
-.modal-dialog .fortune-title { color: var(--shrine-ink); font-size: 64px; font-weight: 500; letter-spacing: .2em; padding-left: .2em; margin: 6px 0 0; line-height: 1.4; }
+.fortune-caption > span:last-child { position: absolute; top: 0; right: 0; writing-mode: vertical-rl; letter-spacing: .2em; border: 1px solid #8b443655; padding: 7px 5px; }
+.fortune-number { font-family: var(--shrine-mincho); font-size: 12px; line-height: 1.7; letter-spacing: .15em; color: var(--shrine-secondary); margin: 21px 0 4px; }
+.modal-dialog .fortune-title { color: var(--shrine-ink); font-size: 64px; font-weight: 500; letter-spacing: .2em; padding-left: .2em; margin: 0; line-height: 1.3; }
 .fortune-reading { font-family: var(--shrine-mincho); font-size: 11px; letter-spacing: .16em; color: var(--shrine-secondary); }
-.fortune-rule { margin: 25px 0; height: 1px; }
+.fortune-rule { margin: 23px 0; height: 1px; }
 .fortune-rule > span { background: var(--shrine-line); }
+.fortune-section-label { font-family: var(--shrine-mincho); font-size: 10px; line-height: 1.8; color: var(--shrine-red); letter-spacing: .12em; margin: 0 0 10px; }
 .fortune-dialog h3 { font-family: var(--shrine-mincho); color: var(--shrine-ink); font-size: 16px; line-height: 1.9; letter-spacing: .035em; margin: 0 0 14px; }
-.fortune-description { font-size: 12px; color: var(--shrine-secondary); line-height: 2.1; text-align: left; margin: 0 0 24px; }
-.fortune-details { border-color: var(--shrine-line); padding: 16px 0; gap: 15px; margin: 0; }
-.fortune-details > div { grid-template-columns: 68px minmax(0, 1fr); align-items: start; gap: 14px; }
-.fortune-details dt { font-size: 12px; color: var(--shrine-red); line-height: 1.9; letter-spacing: .03em; }
-.fortune-details dd { font-size: 12px; color: var(--shrine-ink); line-height: 1.9; }
+.fortune-description { font-family: var(--shrine-mincho); font-size: 13px; color: var(--shrine-secondary); line-height: 2.15; text-align: left; margin: 0 0 25px; }
+.fortune-details { border-color: var(--shrine-line); padding: 0; gap: 0; margin: 0; }
+.fortune-details > div { grid-template-columns: 70px minmax(0, 1fr); align-items: start; gap: 18px; padding: 15px 0; border-bottom: 1px solid #cecabe88; }
+.fortune-details > div:last-child { border-bottom: 0; }
+.fortune-details dt { font-size: 14px; color: var(--shrine-red); line-height: 1.8; letter-spacing: .09em; }
+.fortune-details dt span { display: block; margin: 3px 0 0; color: var(--shrine-secondary); font-size: 9px; line-height: 1.7; letter-spacing: .025em; }
+.fortune-details dd { font-family: var(--shrine-mincho); font-size: 13px; color: var(--shrine-ink); line-height: 2.05; letter-spacing: .02em; }
 .modal-dialog .fortune-footnote { color: var(--shrine-secondary); font-size: 10px; line-height: 1.9; margin: 22px 0; }
 .ema-wishes { margin: 0; gap: 0; border-bottom: 1px solid var(--shrine-line); }
 .ema-wishes blockquote {
@@ -279,8 +288,10 @@
   .modal-dialog::before { left: 25px; }
   .modal-dialog h2 { font-size: 25px; }
   .modal-dialog .fortune-title { font-size: 56px; }
-  .modal-dialog .fortune-description { font-size: 12px; }
-  .fortune-details > div { grid-template-columns: 66px minmax(0, 1fr); }
+  .modal-dialog.fortune-dialog { flex-basis: 100%; width: 100%; }
+  .fortune-slip-content { padding: 4px 25px 25px; }
+  .modal-dialog .fortune-description { font-size: 13px; }
+  .fortune-details > div { grid-template-columns: 60px minmax(0, 1fr); gap: 14px; }
   .ema-wishes blockquote { font-size: 16px; min-height: 105px; }
   .lantern-content { grid-template-columns: 1fr; gap: 24px; }
   .lantern-preview-column { grid-template-columns: 75px minmax(0, 1fr); column-gap: 18px; }
