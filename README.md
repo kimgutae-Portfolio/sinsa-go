@@ -72,7 +72,7 @@ npm test         # 게임 로직 + 실제 WebSocket + 재접속 / 자원 해제 
 
 ## URL 공유와 favicon
 
-SNS에 URL을 붙이면 **こもれび神社**라는 이름과 일본어 소개, 실제 게임 경내를 담은 1200×630 공유 이미지가 초기 HTML의 OG/X 태그로 제공됩니다. 도리이 표식의 SVG·ICO·PNG·아이폰용 favicon을 함께 준비했습니다. 공개 기본 주소는 `https://sinsa-go.vercel.app`이며, 도메인을 바꾸면 빌드 환경의 `SITE_URL`을 지정합니다. 이미지 원본·재생성·배포와 캐시 확인은 [공유 안내](docs/SHARING.md)에 정리했습니다.
+SNS에 URL을 붙이면 **こもれび神社**라는 이름과 일본어 소개, 실제 게임 경내를 담은 1200×630 공유 이미지가 초기 HTML의 OG/X 태그로 제공됩니다. 도리이 표식의 SVG·ICO·PNG·아이폰용 favicon을 함께 준비했습니다. 공개 기본 주소는 `https://komorebi-jinja.com`이며 canonical·OG/X 이미지 주소·robots·sitemap도 이 주소를 사용합니다. 도메인을 바꾸면 빌드 환경의 `SITE_URL`을 지정합니다. 이미지 원본·재생성·배포와 캐시 확인은 [공유 안내](docs/SHARING.md)에 정리했습니다.
 
 ## 게임 안의 안내창
 
@@ -160,6 +160,7 @@ PORT=8787 HOST=0.0.0.0 npm start
 - `STORAGE_BACKEND=supabase`는 `fly.toml`에 지정했습니다. Fly의 Secrets에는 `SUPABASE_URL`(또는 `NEXT_PUBLIC_SUPABASE_URL`), `SUPABASE_SECRET_KEY`(또는 `SUPABASE_SERVICE_ROLE_KEY`)를 설정합니다. `.env`는 이미지에 포함하지 않으며 기존 로컬 기록을 자동 이관하지 않습니다. 저장이 `file`로 표시되면 운영 DB 설정이 반영되지 않은 상태입니다.
 - **게임 서버는 한 대만 운영**합니다. 방 정보는 메모리에 있고 Supabase 저장도 단일 서버를 전제로 합니다. 로컬 개발 서버가 같은 DB를 쓰는 경우 운영 서버를 켜기 전에 종료하거나 별도의 개발 DB를 사용하세요. Fly가 초기 배포에서 만든 두 대를 그대로 운영하면 방문자가 분리되거나 DB 저장 버전이 충돌할 수 있습니다. 기존 머신을 줄이기 전에는 파일 저장 기록을 보관해야 합니다.
 - 공개 주소 `https://sinsa-go.fly.dev/`에는 Networking의 **Shared IPv4** 또는 공개 IPv6 할당이 필요합니다. 공개 IP가 없으면 호스트 이름이 해석되지 않아 페이지에 접속할 수 없습니다.
+- 사용자용 도메인은 `https://komorebi-jinja.com`입니다. Cloudflare DNS는 기존 `sinsa-go` 앱의 공개 주소를 가리키고 Fly의 해당 도메인 인증서를 사용합니다. 게임과 `/realtime`은 같은 도메인에서 제공되므로 별도 프런트엔드 주소나 `VITE_REALTIME_URL` 설정 없이 HTTPS/WSS로 연결합니다. 도메인을 바꾼 뒤에는 HTTPS·게임 입장·공유 이미지 응답까지 확인합니다.
 - Fly 무료 체험 머신은 **5분 뒤 자동 정지**합니다. 계속 운영하려면 계정에 결제 수단을 등록해야 하며, 등록 이후에는 사용량에 따라 요금이 발생합니다. [Fly 무료 체험 안내](https://docs.fly.io/about/free-trial)를 확인하세요.
 
 Fly CLI를 사용하는 경우, 저장소 설정과 단일 머신 구성을 확인한 다음 `fly deploy --ha=false`로 배포합니다. 기존 머신 수는 이 옵션만으로 줄어들지 않습니다. GitHub 연동 배포라면 수정한 배포 파일을 해당 브랜치에 반영한 뒤 Fly의 **Deploy app**을 실행합니다. 이후 `/health` 응답과 `/realtime` 연결을 확인하세요. Vercel을 화면 주소로 계속 쓸 때는 위의 별도 프런트엔드 설정이 필요합니다.

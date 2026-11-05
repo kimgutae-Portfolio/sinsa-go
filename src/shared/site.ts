@@ -3,7 +3,7 @@ export const SITE = {
   name: "こもれび神社",
   title: "こもれび神社｜オンライン参拝",
   description: "ブラウザーで訪れる、森の中の小さな神社。手水で清め、参拝し、絵馬に願いを記せます。",
-  origin: "https://sinsa-go.vercel.app",
+  origin: "https://komorebi-jinja.com",
   image: "/social/komorebi-shrine-v1.jpg",
   imageAlt: "森に囲まれたこもれび神社の境内。拝殿、参道、鳥居と小さな旅人。",
 } as const;

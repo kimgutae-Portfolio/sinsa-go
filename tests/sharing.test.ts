@@ -6,12 +6,19 @@ import { SITE, resolveSiteOrigin, siteMetadata, crawlFiles } from "../src/shared
 import { createShrineServer } from "../server/app";
 
 describe("share metadata in the initial HTML", () => {
-  it("uses the verified production domain and permits an explicit HTTPS custom domain", () => {
-    expect(resolveSiteOrigin()).toBe("https://sinsa-go.vercel.app");
+  it("uses the shrine's custom domain and permits an explicit HTTPS origin override", () => {
+    expect(resolveSiteOrigin()).toBe("https://komorebi-jinja.com");
     expect(resolveSiteOrigin("https://shrine.example/")).toBe("https://shrine.example");
     for (const invalid of ["http://localhost:4173", "javascript:alert(1)", "https://user:secret@shrine.example",
       "https://shrine.example/a", "https://shrine.example/?token=secret", "https://shrine.example/#fragment"])
       expect(() => resolveSiteOrigin(invalid)).toThrow();
+    const metadata = siteMetadata(resolveSiteOrigin());
+    expect(metadata).toContain('rel="canonical" href="https://komorebi-jinja.com/"');
+    expect(metadata).toContain('property="og:url" content="https://komorebi-jinja.com/"');
+    expect(metadata).toContain(`property="og:image" content="https://komorebi-jinja.com${SITE.image}"`);
+    const crawl = crawlFiles(resolveSiteOrigin());
+    expect(crawl.robots).toContain('Sitemap: https://komorebi-jinja.com/sitemap.xml');
+    expect(crawl.sitemap).toContain('<loc>https://komorebi-jinja.com/</loc>');
   });
   it("supplies complete, absolute OG and X tags before any JavaScript executes", async () => {
     const source = await readFile(resolve("index.html"), "utf8");
