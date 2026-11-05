@@ -1,19 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 import { ShrineAudio, type SoundSnapshot } from "../src/audio/ShrineAudio";
+import { OMIKUJI_REDUCED_SOUND_SECONDS, OMIKUJI_SOUND_SECONDS } from "../src/audio/OmikujiSound";
 
 function setup(stored = "null", loader = vi.fn(async (_signal: AbortSignal) => new ArrayBuffer(8))) {
   class Visibility extends EventTarget { hidden = false; }
   const visibility = new Visibility();
   const sources: ReturnType<typeof createSource>[] = [];
   function createSource() {
-    return { buffer: null, loop: false, onended: null,
+    return { buffer: null, loop: false, onended: null as (() => void) | null,
       connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() };
   }
-  const gain = { gain: { value: 0, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(),
-    setTargetAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() }, connect: vi.fn(), disconnect: vi.fn() };
+  const createGain = () => ({ gain: { value: 0, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(),
+    setTargetAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() }, connect: vi.fn(), disconnect: vi.fn() });
+  const gain = createGain(), ambienceGain = createGain();
+  const buffers: { duration: number; length: number; copyToChannel: ReturnType<typeof vi.fn> }[] = [];
+  let now = 0;
   const context = {
-    currentTime: 0, state: "suspended", destination: {}, onstatechange: null,
-    createGain: vi.fn(() => gain),
+    currentTime: 0, sampleRate: 32000, state: "suspended", destination: {}, onstatechange: null,
+    createGain: vi.fn().mockReturnValueOnce(gain).mockReturnValueOnce(ambienceGain),
+    createBuffer: vi.fn((_channels: number, length: number, rate: number) => {
+      const buffer = { duration: length / rate, length, copyToChannel: vi.fn() };
+      buffers.push(buffer);
+      return buffer;
+    }),
     createBufferSource: vi.fn(() => { const source = createSource(); sources.push(source); return source; }),
     decodeAudioData: vi.fn(async () => ({ duration: 48 })),
     resume: vi.fn(async () => { context.state = "running"; }),
@@ -24,12 +33,13 @@ function setup(stored = "null", loader = vi.fn(async (_signal: AbortSignal) => n
   const createContext = vi.fn(() => context as unknown as AudioContext);
   let status: SoundSnapshot;
   const changes = vi.fn((value: SoundSnapshot) => { status = value; });
-  const audio = new ShrineAudio(changes, { createContext, load: loader, visibility, storage });
+  const audio = new ShrineAudio(changes, { createContext, load: loader, visibility, storage, now: () => now });
   const changeVisibility = (hidden: boolean) => {
     visibility.hidden = hidden;
     visibility.dispatchEvent(new Event("visibilitychange"));
   };
-  return { audio, context, gain, sources, storage, loader, createContext, changeVisibility,
+  return { audio, context, gain, ambienceGain, buffers, sources, storage, loader, createContext, changeVisibility,
+    advance: (milliseconds: number) => { now += milliseconds; },
     changes, status: () => status! };
 }
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -137,10 +147,154 @@ describe("shrine sound lifecycle", () => {
     expect(s.sources[0]?.disconnect).toHaveBeenCalledOnce();
     expect(s.sources[0]?.buffer).toBeNull();
     expect(s.gain.disconnect).toHaveBeenCalledOnce();
+    expect(s.ambienceGain.disconnect).toHaveBeenCalledOnce();
     expect(s.context.close).toHaveBeenCalledOnce();
     const calls = s.changes.mock.calls.length;
     s.changeVisibility(true);
     await s.audio.setEnabled(true);
     expect(s.changes).toHaveBeenCalledTimes(calls);
+  });
+});
+
+describe("omikuji sound with the shared shrine audio", () => {
+  it("respects default-off and remembered-off playback without allocating or enabling audio", async () => {
+    const s = setup('{"enabled":true,"volume":0.22}');
+    const cancel = s.audio.playOmikujiDraw();
+    cancel();
+    cancel();
+    expect(s.createContext).not.toHaveBeenCalled();
+    expect(s.loader).not.toHaveBeenCalled();
+    expect(s.status().enabled).toBe(false);
+    await s.audio.setEnabled(true);
+    await s.audio.setEnabled(false);
+    s.audio.playOmikujiDraw();
+    expect(s.sources).toHaveLength(1);
+    s.audio.dispose();
+  });
+
+  it("plays through the shared master while the background is still loading and survives its arrival", async () => {
+    let finish!: (bytes: ArrayBuffer) => void;
+    const s = setup("null", vi.fn(() => new Promise<ArrayBuffer>(resolve => { finish = resolve; })));
+    const enabling = s.audio.setEnabled(true);
+    s.audio.playOmikujiDraw();
+    expect(s.context.resume).toHaveBeenCalledTimes(2);
+    await settle();
+    const effect = s.sources[0]!;
+    expect(effect.start).toHaveBeenCalledOnce();
+    expect(effect.loop).toBe(false);
+    expect(effect.connect).toHaveBeenCalledWith(s.gain);
+    expect(s.gain.connect).toHaveBeenCalledWith(s.context.destination);
+    expect(s.gain.gain.value).toBe(0.35);
+    expect(s.context.decodeAudioData).not.toHaveBeenCalled();
+    expect(s.loader).toHaveBeenCalledOnce();
+    finish(new ArrayBuffer(8));
+    await enabling;
+    expect(s.createContext).toHaveBeenCalledOnce();
+    expect(s.context.createGain).toHaveBeenCalledTimes(2);
+    expect(s.sources[1]!.connect).toHaveBeenCalledWith(s.ambienceGain);
+    expect(s.ambienceGain.connect).toHaveBeenCalledWith(s.gain);
+    expect(s.ambienceGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(1, 1.2);
+    expect(s.gain.gain.linearRampToValueAtTime).not.toHaveBeenCalled();
+    expect(effect.disconnect).not.toHaveBeenCalled();
+    expect(effect.stop).not.toHaveBeenCalled();
+    s.audio.setVolume(0.12);
+    expect(s.gain.gain.setTargetAtTime).toHaveBeenCalledWith(0.12, 0, 0.05);
+    expect(s.ambienceGain.gain.setTargetAtTime).not.toHaveBeenCalled();
+    s.audio.dispose();
+  });
+
+  it("cancels a pending resume immediately and cannot start after the dialog closes", async () => {
+    const s = setup();
+    await s.audio.setEnabled(true);
+    let resume!: () => void;
+    s.context.resume.mockImplementationOnce(() => new Promise<void>(resolve => { resume = resolve; }));
+    const cancel = s.audio.playOmikujiDraw();
+    const effect = s.sources[1]!;
+    cancel();
+    cancel();
+    resume();
+    await settle();
+    expect(effect.start).not.toHaveBeenCalled();
+    expect(effect.stop).toHaveBeenCalledOnce();
+    expect(effect.disconnect).toHaveBeenCalledOnce();
+    expect(effect.buffer).toBeNull();
+    s.audio.dispose();
+    expect(effect.stop).toHaveBeenCalledOnce();
+  });
+
+  it("discards a late resume rather than playing the shake after its visual moment", async () => {
+    const s = setup();
+    await s.audio.setEnabled(true);
+    let resume!: () => void;
+    s.context.resume.mockImplementationOnce(() => new Promise<void>(resolve => { resume = resolve; }));
+    s.audio.playOmikujiDraw();
+    s.advance(201);
+    resume();
+    await settle();
+    expect(s.sources[1]!.start).not.toHaveBeenCalled();
+    expect(s.sources[1]!.disconnect).toHaveBeenCalledOnce();
+    s.audio.dispose();
+  });
+
+  it("contains resume failures without disabling the fortune interaction", async () => {
+    const s = setup();
+    await s.audio.setEnabled(true);
+    s.context.resume.mockRejectedValueOnce(new Error("gesture rejected"));
+    expect(() => s.audio.playOmikujiDraw()).not.toThrow();
+    await settle();
+    expect(s.sources[1]!.start).not.toHaveBeenCalled();
+    expect(s.sources[1]!.disconnect).toHaveBeenCalledOnce();
+    expect(s.status().enabled).toBe(true);
+    s.audio.dispose();
+  });
+
+  it.each(["mute", "hidden", "dispose"] as const)("stops an active draw on %s and never replays it", async reason => {
+    const s = setup();
+    await s.audio.setEnabled(true);
+    s.audio.playOmikujiDraw();
+    await settle();
+    const effect = s.sources[1]!;
+    expect(effect.start).toHaveBeenCalledOnce();
+    if (reason === "mute") await s.audio.setEnabled(false);
+    if (reason === "hidden") s.changeVisibility(true);
+    if (reason === "dispose") s.audio.dispose();
+    expect(effect.stop).toHaveBeenCalledOnce();
+    expect(effect.disconnect).toHaveBeenCalledOnce();
+    expect(effect.buffer).toBeNull();
+    if (reason === "hidden") {
+      s.audio.playOmikujiDraw();
+      expect(s.sources).toHaveLength(2);
+      s.changeVisibility(false);
+    } else await s.audio.setEnabled(true);
+    await settle();
+    expect(effect.start).toHaveBeenCalledOnce();
+    expect(s.sources.filter(source => !source.loop)).toHaveLength(1);
+    s.audio.dispose();
+    expect(effect.stop).toHaveBeenCalledOnce();
+  });
+
+  it("reuses synthesized buffers and gives reduced motion a short reveal sound", async () => {
+    const s = setup();
+    await s.audio.setEnabled(true);
+    const cancelFirst = s.audio.playOmikujiDraw();
+    await settle();
+    cancelFirst();
+    const cancelSecond = s.audio.playOmikujiDraw();
+    await settle();
+    cancelSecond();
+    s.audio.playOmikujiDraw(true);
+    await settle();
+    expect(s.buffers).toHaveLength(2);
+    expect(s.buffers[0]!.duration).toBeCloseTo(OMIKUJI_SOUND_SECONDS);
+    expect(s.buffers[1]!.duration).toBeCloseTo(OMIKUJI_REDUCED_SOUND_SECONDS);
+    expect(s.buffers[1]!.duration).toBeLessThan(0.3);
+    expect(s.buffers.every(buffer => buffer.copyToChannel.mock.calls[0]?.[0] instanceof Float32Array)).toBe(true);
+    expect(s.buffers.every(buffer => buffer.copyToChannel.mock.calls[0]?.[1] === 0)).toBe(true);
+    expect(s.sources[1]!.buffer).toBeNull();
+    expect(s.sources[3]!.buffer).toBe(s.buffers[1]);
+    s.sources[3]!.onended?.();
+    expect(s.sources[3]!.disconnect).toHaveBeenCalledOnce();
+    s.audio.dispose();
+    expect(s.sources[3]!.stop).toHaveBeenCalledOnce();
   });
 });

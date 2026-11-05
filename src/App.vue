@@ -6,6 +6,7 @@ import Icon from "./components/Icon.vue";
 import SoundControls from "./components/SoundControls.vue";
 import EmaPanel from "./components/EmaPanel.vue";
 import OmikujiExperience from "./components/OmikujiExperience.vue";
+import { ShrineAudio, type SoundSnapshot } from "./audio/ShrineAudio";
 import { FREE_LANTERN_POLICY, type LanternState } from "./shared/lanterns";
 import type { VisitorSummary } from "./shared/visitorStats";
 import type {
@@ -31,6 +32,8 @@ import { inject as injectAnalytics } from "@vercel/analytics";
 if (import.meta.env.PROD) injectAnalytics({ mode: "production" });
 
 const game = ref<InstanceType<typeof GameCanvas>>();
+const sound = ref<SoundSnapshot>({ state: "off", enabled: false, volume: 0.35, remembered: false });
+const audio = new ShrineAudio(value => { sound.value = value; });
 const ready = ref(false);
 const guideOpen = ref(false);
 const roomOpen = ref(false);
@@ -334,6 +337,7 @@ function onWindowKey(event: KeyboardEvent) {
 }
 window.addEventListener("keydown", onWindowKey);
 onBeforeUnmount(() => {
+  audio.dispose();
   window.removeEventListener("keydown", onWindowKey);
   clearTimeout(toastTimer);
   clearTimeout(welcomeTimer);
@@ -404,7 +408,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
-      <SoundControls v-show="!guideOpen && !roomOpen" :dismissed="guideOpen || roomOpen || modal !== null" />
+      <SoundControls v-show="!guideOpen && !roomOpen" :audio="audio" :sound="sound" :dismissed="guideOpen || roomOpen || modal !== null" />
       <Transition name="fade">
         <aside
           v-if="roomOpen"
@@ -779,6 +783,8 @@ onBeforeUnmount(() => {
               v-else-if="modal === 'fortune'"
               :key="fortuneAttempt"
               ref="omikujiExperience"
+              :audio="audio"
+              :sound="sound"
               @drawn="onFortuneDrawn"
               @close="modal = null"
             />

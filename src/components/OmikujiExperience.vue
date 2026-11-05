@@ -3,7 +3,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId 
 import { OMIKUJI_DRAW_DURATION, OmikujiDraw, type OmikujiDrawState } from "../game/OmikujiDraw";
 import { formatFortuneNumber } from "../game/fortunes";
 import OmikujiSlip from "./OmikujiSlip.vue";
+import Icon from "./Icon.vue";
+import type { ShrineAudio, SoundSnapshot } from "../audio/ShrineAudio";
 
+const props = defineProps<{ audio: ShrineAudio; sound: SoundSnapshot }>();
 const emit = defineEmits<{ drawn: []; close: [] }>();
 const experience = ref<HTMLElement>();
 const drawButton = ref<HTMLButtonElement>();
@@ -12,6 +15,12 @@ const state = shallowRef<OmikujiDrawState>({ phase: "ready", fortune: null });
 const statusId = `omikuji-status-${useId()}`;
 const number = computed(() => state.value.fortune ? formatFortuneNumber(state.value.fortune.number) : "");
 let disposed = false;
+let cancelDrawSound: (() => void) | undefined;
+const soundOn = computed(() => props.sound.enabled && !["blocked", "error"].includes(props.sound.state));
+
+function toggleSound() {
+  void props.audio.setEnabled(!soundOn.value);
+}
 
 const controller = new OmikujiDraw((nextState) => {
   state.value = nextState;
@@ -30,13 +39,17 @@ async function focusPhase(phase: OmikujiDrawState["phase"]) {
 }
 
 function draw() {
-  controller.draw(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (controller.draw(reducedMotion) && !disposed) {
+    cancelDrawSound = props.audio.playOmikujiDraw(reducedMotion);
+  }
 }
 
 onMounted(() => void focusPhase("ready"));
 function cancel() {
   disposed = true;
   controller.dispose();
+  cancelDrawSound?.();
 }
 
 defineExpose({ cancel });
@@ -109,6 +122,10 @@ onBeforeUnmount(cancel);
       </div>
 
       <div class="omikuji-draw-actions">
+        <button class="omikuji-sound" :aria-pressed="soundOn" @click="toggleSound">
+          <Icon :name="soundOn ? 'sound' : 'muted'" :size="14" />
+          {{ soundOn ? '音を消す' : '音を聴く' }}
+        </button>
         <button
           v-if="state.phase === 'drawn'"
           ref="openButton"

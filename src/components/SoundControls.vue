@@ -1,25 +1,23 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
-import { ShrineAudio, type SoundSnapshot } from "../audio/ShrineAudio";
+import type { ShrineAudio, SoundSnapshot } from "../audio/ShrineAudio";
 
-const props = defineProps<{ dismissed?: boolean }>();
+const props = defineProps<{ dismissed?: boolean; audio: ShrineAudio; sound: SoundSnapshot }>();
 const open = ref(false);
 watch(() => props.dismissed, value => { if (value) open.value = false; });
 const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
-const sound = ref<SoundSnapshot>({ state: "off", enabled: false, volume: 0.35, remembered: false });
-const audio = new ShrineAudio(value => { sound.value = value; });
-const playing = computed(() => sound.value.state === "playing");
+const playing = computed(() => props.sound.state === "playing");
 const label = computed(() => playing.value ? "境内の音" :
-  sound.value.state === "loading" ? "音の準備中" :
-  sound.value.remembered ? "音を再開" : "音を聴く");
+  props.sound.state === "loading" ? "音の準備中" :
+  props.sound.remembered ? "音を再開" : "音を聴く");
 function toggle() {
-  void audio.setEnabled(!sound.value.enabled || ["blocked", "error"].includes(sound.value.state));
+  void props.audio.setEnabled(!props.sound.enabled || ["blocked", "error"].includes(props.sound.state));
 }
 function activate() {
   open.value = !open.value;
-  if (open.value && !playing.value && sound.value.state !== "loading") void audio.setEnabled(true);
+  if (open.value && !playing.value && props.sound.state !== "loading") void props.audio.setEnabled(true);
 }
 function close() { open.value = false; trigger.value?.focus(); }
 function outside(event: PointerEvent) {
@@ -28,7 +26,6 @@ function outside(event: PointerEvent) {
 onMounted(() => document.addEventListener("pointerdown", outside));
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", outside);
-  audio.dispose();
 });
 </script>
 
