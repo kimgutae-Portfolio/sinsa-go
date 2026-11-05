@@ -1,4 +1,4 @@
--- Run only in a disposable local Postgres cluster after both shrine migrations.
+-- Run only in a disposable local Postgres cluster after all three shrine migrations.
 begin;
 do $$ begin
   if exists (select 1 from pg_class where oid in ('public.shrine_visitors'::regclass,
@@ -27,7 +27,7 @@ select public.shrine_save_state('lanterns',0,'00000000-0000-4000-8000-0000000000
  '[{"id":"test-lantern","room":"garden","owner_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","product_id":"paper-warm","slot":0,"wish":"よい一日を","signature":"旅人","created_at":1000,"expires_at":100000,"issuance":"free","request_id":"request_0001"}]');
 do $$ declare result bigint; snapshot jsonb; begin
   snapshot := '[{"id":"test-lantern","room":"garden","owner_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","product_id":"paper-warm","slot":0,"wish":"穏やかな一日を","signature":"旅人","created_at":1000,"expires_at":100000,"issuance":"free","request_id":"request_0001"},
-    {"id":"second-lantern","room":"hinoki","owner_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","product_id":"paper-sakura","slot":0,"wish":"優しい一日を","signature":"旅人","created_at":2000,"expires_at":100000,"issuance":"free","request_id":"request_0002"}]'::jsonb;
+    {"id":"second-lantern","room":"hinoki","owner_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","product_id":"paper-sakura","slot":0,"wish":"優しい一日を","signature":"旅人","created_at":2000,"expires_at":100000,"issuance":"free","request_id":"request_0002"}]'::jsonb;
   result := public.shrine_save_state('lanterns',1,'00000000-0000-4000-8000-000000000004',snapshot);
   if result <> 2 or (select count(*) from public.shrine_lanterns) <> 2 or
       (select wish from public.shrine_lanterns where id='test-lantern') <> '穏やかな一日を' then
@@ -51,7 +51,7 @@ do $$ declare result bigint; snapshot jsonb; begin
     raise exception 'Failed write deleted the previous lantern snapshot'; end if;
   begin
     perform public.shrine_save_state('lanterns',3,'00000000-0000-4000-8000-000000000007',
-      jsonb_build_array(snapshot -> 1, (snapshot -> 1) || '{"id":"duplicate-slot","owner_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'::jsonb));
+      jsonb_build_array(snapshot -> 1, (snapshot -> 1) || '{"id":"duplicate-slot","owner_hash":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}'::jsonb));
     raise exception 'Duplicate lantern slot was accepted';
   exception when unique_violation then null; end;
   if (select count(*) from public.shrine_lanterns) <> 1 or
@@ -59,5 +59,20 @@ do $$ declare result bigint; snapshot jsonb; begin
     raise exception 'Unique validation failure changed retained records'; end if;
   if (select revision from public.shrine_storage_state where kind='lanterns') <> 3 then
     raise exception 'Failed write advanced the revision'; end if;
+  begin
+    perform public.shrine_save_state('lanterns',3,'00000000-0000-4000-8000-000000000008',
+      jsonb_build_array(snapshot -> 1, (snapshot -> 1) || '{"id":"duplicate-owner","room":"sugi"}'::jsonb));
+    raise exception 'The same owner was accepted in another room';
+  exception when unique_violation then null; end;
+  if (select count(*) from public.shrine_lanterns) <> 1 or
+      (select revision from public.shrine_storage_state where kind='lanterns') <> 3 or
+      not exists (select 1 from public.shrine_lanterns where id='second-lantern' and room='hinoki') then
+    raise exception 'Cross-room ownership failure changed records or revision'; end if;
+  result := public.shrine_save_state('lanterns',3,'00000000-0000-4000-8000-000000000009',
+    jsonb_build_array((snapshot -> 1) || '{"id":"replacement-lantern","room":"sugi","created_at":100001,"expires_at":200000,"request_id":"request_0004"}'::jsonb));
+  if result <> 4 or (select count(*) from public.shrine_lanterns) <> 1 or
+      not exists (select 1 from public.shrine_lanterns where id='replacement-lantern' and room='sugi') or
+      exists (select 1 from public.shrine_lanterns where id='second-lantern') then
+    raise exception 'Replacement after removal or expiry did not release the global owner quota'; end if;
 end $$;
 rollback;

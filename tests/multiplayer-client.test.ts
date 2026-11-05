@@ -199,6 +199,7 @@ describe("multiplayer client lifecycle", () => {
       room: "other",
       lanterns: [],
       mineIds: [],
+      ownLantern: null,
       policy: FREE_LANTERN_POLICY,
     });
     expect(callbacks.onLanterns).not.toHaveBeenCalled();
@@ -208,6 +209,7 @@ describe("multiplayer client lifecycle", () => {
       room: "komorebi",
       lanterns: [],
       mineIds: [],
+      ownLantern: null,
       policy: { ...FREE_LANTERN_POLICY, mode: "paid" },
     });
     expect(callbacks.onLanterns).toHaveBeenLastCalledWith(
@@ -216,6 +218,73 @@ describe("multiplayer client lifecycle", () => {
       }),
     );
     expect(vi.getTimerCount()).toBe(1);
+  });
+  it("keeps another room's own-ema notice private and carries its quota through a room change", async () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    welcome(socket);
+    const own = { id: "my-ema", room: "sugi", expiresAt: Date.now() + 3600000 };
+    socket.receive({ type: "lanterns", room: "komorebi", serverTime: Date.now(),
+      lanterns: [], mineIds: [], ownLantern: own, policy: FREE_LANTERN_POLICY });
+    expect(callbacks.onLanterns).toHaveBeenLastCalledWith({ room: "komorebi",
+      lanterns: [], mineIds: [], ownLantern: own, policy: FREE_LANTERN_POLICY });
+    const before = socket.sent.length;
+    expect(await client.hangLantern("paper-warm", "新しい願い", "", 0)).toMatchObject({ ok: false });
+    expect(socket.sent).toHaveLength(before);
+    expect(client.joinRoom("hinoki")).toBe(true);
+    welcome(socket, [visitor()], "hinoki");
+    expect(callbacks.onLanterns).toHaveBeenLastCalledWith(expect.objectContaining({
+      room: "hinoki", lanterns: [], mineIds: [], ownLantern: own,
+    }));
+    socket.receive({ type: "lanterns", room: "hinoki", serverTime: Date.now(),
+      lanterns: [], mineIds: [], ownLantern: null, policy: FREE_LANTERN_POLICY });
+    const pending = client.hangLantern("paper-warm", "新しい願い", "", 0);
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({ type: "lantern-hang" });
+    socket.close();
+    expect(await pending).toMatchObject({ ok: false });
+    expect(callbacks.onLanterns).toHaveBeenLastCalledWith(expect.objectContaining({
+      ownLantern: null, mineIds: [], lanterns: [],
+    }));
+  });
+  it("rejects malformed or contradictory ownership metadata and copies only its public fields", () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    welcome(socket);
+    const base = { type: "lanterns" as const, room: "komorebi", serverTime: Date.now(),
+      lanterns: [], mineIds: [], policy: FREE_LANTERN_POLICY };
+    const before = vi.mocked(callbacks.onLanterns!).mock.calls.length;
+    for (const ownLantern of [
+      undefined,
+      { id: "", room: "sugi", expiresAt: Date.now() + 1000 },
+      { id: "my-ema", room: "../bad", expiresAt: Date.now() + 1000 },
+      { id: "my-ema", room: "sugi", expiresAt: Infinity },
+      { id: "my-ema", room: "komorebi", expiresAt: Date.now() + 1000 },
+    ]) socket.receive({ ...base, ownLantern } as unknown as ServerMessage);
+    expect(callbacks.onLanterns).toHaveBeenCalledTimes(before);
+    socket.receive({ ...base, ownLantern: { id: "my-ema", room: "sugi",
+      expiresAt: Date.now() + 1000, wish: "other-room private wish", ownerHash: "private-owner" } } as unknown as ServerMessage);
+    const state = vi.mocked(callbacks.onLanterns!).mock.calls.at(-1)![0];
+    expect(state.ownLantern).toEqual({ id: "my-ema", room: "sugi", expiresAt: Date.now() + 1000 });
+    expect(JSON.stringify(state)).not.toContain("private");
+  });
+  it("accepts ownership in the current room only when it matches the room's own ema", () => {
+    client.connect();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    welcome(socket);
+    const ema = { id: "my-ema", productId: "paper-warm" as const, slot: 0, wish: "穏やかな一日を",
+      signature: "旅人", createdAt: Date.now(), expiresAt: Date.now() + 3600000 };
+    const own = { id: ema.id, room: "komorebi", expiresAt: ema.expiresAt };
+    socket.receive({ type: "lanterns", room: "komorebi", serverTime: Date.now(),
+      lanterns: [ema], mineIds: [ema.id], ownLantern: own, policy: FREE_LANTERN_POLICY });
+    expect(callbacks.onLanterns).toHaveBeenLastCalledWith(expect.objectContaining({ mineIds: [ema.id], ownLantern: own }));
+    const before = vi.mocked(callbacks.onLanterns!).mock.calls.length;
+    for (const ownLantern of [null, { ...own, room: "sugi" }, { ...own, id: "different-ema" }])
+      socket.receive({ type: "lanterns", room: "komorebi", serverTime: Date.now(),
+        lanterns: [ema], mineIds: [ema.id], ownLantern, policy: FREE_LANTERN_POLICY });
+    expect(callbacks.onLanterns).toHaveBeenCalledTimes(before);
   });
   it("settles pending lantern requests when disconnecting and does not send duplicates", async () => {
     client.connect();

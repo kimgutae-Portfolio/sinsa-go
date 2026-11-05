@@ -81,6 +81,14 @@ describe("Supabase shrine persistence", () => {
     const duplicates = setup([], [lantern, { ...lantern, id: 'lantern-2', slot: 1 }]);
     await expect(openSupabaseRepositories(duplicates.database)).rejects.toThrow('Invalid shrine lantern');
   });
+  it("rejects the same persisted ema owner across different rooms without rewriting records", async () => {
+    const duplicates = setup([], [lantern, { ...lantern, id: 'lantern-2', room: 'hinoki' }]);
+    await expect(openSupabaseRepositories(duplicates.database)).rejects.toThrow('Invalid shrine lantern');
+    expect(duplicates.rows.lanterns).toHaveLength(2);
+    expect(duplicates.fetcher.mock.calls.some(([url]) => String(url).includes('/shrine_save_state'))).toBe(false);
+    const distinct = setup([], [lantern, { ...lantern, id: 'lantern-2', room: 'hinoki', ownerHash: visitor(2).ownerHash }]);
+    expect((await openSupabaseRepositories(distinct.database)).lanterns.load()).toHaveLength(2);
+  });
   it("persists statistics and lantern actions and restores them through fresh repositories", async () => {
     const s = setup();
     const repositories = await openSupabaseRepositories(s.database);

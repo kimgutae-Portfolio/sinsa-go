@@ -60,6 +60,7 @@ const lanternState = ref<LanternState>({
   room: initialRoom,
   lanterns: [],
   mineIds: [],
+  ownLantern: null,
   policy: { ...FREE_LANTERN_POLICY },
 });
 const roomError = ref("");
@@ -91,6 +92,12 @@ function switchRoom(room: string) {
     requestedRoom.value = null;
     roomError.value = "ただいま移動できません。少し待ってからお試しください。";
   }
+}
+async function visitEmaRoom(room: string) {
+  if (!isPublicRoom(room) || !canSwitchRooms.value) return;
+  modal.value = null;
+  await nextTick();
+  switchRoom(room);
 }
 watch(
   () => [presence.value.state, presence.value.room, presence.value.switchingTo] as const,
@@ -728,6 +735,7 @@ onBeforeUnmount(() => {
               :remove="async (id) => game?.removeLantern(id)"
               :report="async (id) => game?.reportLantern(id)"
               @placed="dialog?.focus()"
+              @visit-room="visitEmaRoom"
               @close="modal = null"
             />
             <template v-else-if="modal === 'help'">

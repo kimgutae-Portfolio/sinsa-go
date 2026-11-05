@@ -8,6 +8,7 @@ import {
 } from "../../src/shared/lanterns";
 import { REPORT_THRESHOLD, wishProblem } from "../../src/shared/moderation";
 import { ShrineDatabaseError } from "../storage/supabase";
+import { isPublicRoom, roomName } from "../../src/shared/multiplayer";
 import type {
   LanternPolicy,
   LanternState,
@@ -68,6 +69,9 @@ export class LanternService {
     this.records = repository.load();
   }
   state(room: string, ownerHash: string, now: number): LanternState {
+    const own = this.records.find(
+      (item) => item.ownerHash === ownerHash && item.expiresAt > now,
+    );
     const records = this.records.filter(
       (item) => item.room === room && item.expiresAt > now,
     );
@@ -77,6 +81,7 @@ export class LanternService {
       mineIds: records
         .filter((item) => item.ownerHash === ownerHash)
         .map((item) => item.id),
+      ownLantern: own ? { id: own.id, room: own.room, expiresAt: own.expiresAt } : null,
       lanterns: records.map(
         ({
           id,
@@ -97,6 +102,10 @@ export class LanternService {
         }),
       ),
     };
+  }
+  /** Covers empty rooms too, so their owners' quota clears immediately on expiry. */
+  activeSignature(now: number) {
+    return this.records.filter(item => item.expiresAt > now).map(item => item.id).sort().join(",");
   }
   execute(command: Command, now: number): Promise<LanternResult> {
     const task = this.queue.then(() => this.commit(command, now));
@@ -224,13 +233,11 @@ export class LanternService {
     const problem = wishProblem(wish) ?? wishProblem(signature);
     if (problem) return fail("moderation", problem);
     const room = active.filter((item) => item.room === command.room);
-    if (
-      room.filter((item) => item.ownerHash === command.ownerHash).length >=
-      FREE_LANTERN_POLICY.maxPerVisitor
-    )
+    const owned = active.filter((item) => item.ownerHash === command.ownerHash);
+    if (owned.length >= FREE_LANTERN_POLICY.maxPerVisitor)
       return fail(
         "visitor_limit",
-        "このルームには、すでにご自身の絵馬があります。「自分の絵馬」からご確認いただけます。",
+        `${isPublicRoom(owned[0]!.room) ? roomName(owned[0]!.room) : "別の境内"}にご自身の絵馬が掛かっています。絵馬はすべての境内を通して、おひとり1枚です。`,
       );
     if (room.length >= FREE_LANTERN_POLICY.capacity)
       return fail(

@@ -5,11 +5,12 @@ import {
   PUBLIC_ROOMS,
   ROOM_CAPACITY,
   isPublicRoom,
+  validRoom,
   validRoomTarget,
   validVisitor,
 } from "../shared/multiplayer";
 import { FREE_LANTERN_POLICY, validPublicLantern } from "../shared/lanterns";
-import type { LanternState } from "../shared/lanterns";
+import type { LanternState, OwnLantern } from "../shared/lanterns";
 import {
   validVisitorSummary,
   type VisitorSummary,
@@ -54,6 +55,14 @@ function roomDirectory(value: unknown): RoomSummary[] | null {
   return PUBLIC_ROOMS.flatMap(room => result.filter(entry => entry.id === room.id));
 }
 
+function validOwnLantern(value: unknown): value is OwnLantern | null {
+  if (value === null) return true;
+  if (!value || typeof value !== "object") return false;
+  const own = value as OwnLantern;
+  return typeof own.id === "string" && own.id.length >= 1 && own.id.length <= 64
+    && validRoom(own.room) && Number.isFinite(own.expiresAt) && own.expiresAt > 0;
+}
+
 export interface MultiplayerCallbacks {
   onProfile?: (profile: VisitorSummary) => void;
   onLanterns?: (state: LanternState) => void;
@@ -87,6 +96,7 @@ export class MultiplayerClient {
   private switchTimer?: ReturnType<typeof setTimeout>;
   private sendTimer?: ReturnType<typeof setInterval>;
   private players: Visitor[] = [];
+  private ownLantern: OwnLantern | null = null;
   private presence: Presence;
   private requestedRoom: string;
   private onPageHide = () => {
@@ -185,6 +195,14 @@ export class MultiplayerClient {
       clearTimeout(this.welcomeTimer);
       this.clearSwitch();
       this.players = [];
+      this.ownLantern = null;
+      this.callbacks.onLanterns?.({
+        room: this.presence.room,
+        lanterns: [],
+        mineIds: [],
+        ownLantern: null,
+        policy: { ...FREE_LANTERN_POLICY },
+      });
       this.callbacks.onPlayers([], this.serverNow);
       this.presence.count = 1;
       this.presence.selfId = null;
@@ -230,11 +248,16 @@ export class MultiplayerClient {
         message.lanterns.length > 24 ||
         !message.lanterns.every(validPublicLantern) ||
         !Array.isArray(message.mineIds) ||
+        message.mineIds.length > 1 ||
         !message.mineIds.every(
           (id) =>
             typeof id === "string" &&
             message.lanterns.some((item) => item.id === id),
         ) ||
+        !validOwnLantern(message.ownLantern) ||
+        (message.ownLantern?.room === message.room
+          ? message.mineIds.length !== 1 || message.mineIds[0] !== message.ownLantern.id
+          : message.mineIds.length !== 0) ||
         !["free", "paid"].includes(message.policy?.mode) ||
         message.policy.capacity !== 24 ||
         !Number.isFinite(message.policy.durationHours) ||
@@ -242,10 +265,14 @@ export class MultiplayerClient {
         message.policy.maxPerVisitor !== 1
       )
         return;
+      this.ownLantern = message.ownLantern
+        ? { id: message.ownLantern.id, room: message.ownLantern.room, expiresAt: message.ownLantern.expiresAt }
+        : null;
       this.callbacks.onLanterns?.({
         room: message.room,
         lanterns: message.lanterns,
         mineIds: message.mineIds,
+        ownLantern: this.ownLantern ? { ...this.ownLantern } : null,
         policy: message.policy,
       });
       return;
@@ -315,6 +342,7 @@ export class MultiplayerClient {
           room: message.room,
           lanterns: [],
           mineIds: [],
+          ownLantern: this.ownLantern ? { ...this.ownLantern } : null,
           policy: { ...FREE_LANTERN_POLICY },
         });
       }
@@ -429,6 +457,8 @@ export class MultiplayerClient {
     signature: string,
     slot: number | null,
   ) {
+    if (this.ownLantern)
+      return Promise.resolve({ ok: false, message: "絵馬はすべての境内を通して、おひとり1枚です。掛けた境内でご確認ください。" });
     return this.lanternRequest({
       type: "lantern-hang",
       productId,
@@ -500,6 +530,7 @@ export class MultiplayerClient {
       room,
       lanterns: [],
       mineIds: [],
+      ownLantern: this.ownLantern ? { ...this.ownLantern } : null,
       policy: { ...FREE_LANTERN_POLICY },
     });
     this.callbacks.onPlayers([], this.serverNow);

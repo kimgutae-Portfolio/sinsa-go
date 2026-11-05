@@ -59,7 +59,7 @@ export function validateLanterns(records: StoredLantern[]) {
     typeof item.requestId === "string" && item.requestId.length <= 64) ||
     new Set(records.map(item => item.id)).size !== records.length ||
     new Set(records.map(item => `${item.room}:${item.slot}`)).size !== records.length ||
-    new Set(records.map(item => `${item.room}:${item.ownerHash}`)).size !== records.length)
+    new Set(records.map(item => item.ownerHash)).size !== records.length)
     throw new Error("Invalid shrine lantern data. Startup stopped; no data was overwritten.");
 }
 

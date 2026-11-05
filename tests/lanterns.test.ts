@@ -84,6 +84,39 @@ describe("lantern issuance and future paid phase", () => {
     expect(competing.filter((item) => item.ok)).toHaveLength(1);
     expect(competing[1]).toMatchObject({ ok: false, code: "occupied" });
   });
+  it("shares one visitor quota across rooms while exposing only the owner's room metadata", async () => {
+    const service = new LanternService();
+    const results = await Promise.all([
+      service.execute({ ...hang(), room: "komorebi", wish: "大切な願い" }, now),
+      service.execute({ ...hang("a", "request_0002"), room: "hinoki" }, now),
+    ]);
+    expect(results.map(result => result.ok)).toEqual([true, false]);
+    expect(results[1]).toMatchObject({ code: "visitor_limit", message: expect.stringContaining("第一境内") });
+    const id = service.state("komorebi", owner("a"), now).mineIds[0]!;
+    const elsewhere = service.state("hinoki", owner("a"), now);
+    expect(elsewhere).toMatchObject({ lanterns: [], mineIds: [], ownLantern: { id, room: "komorebi", expiresAt: now + 24 * 3600000 } });
+    expect(JSON.stringify(elsewhere)).not.toContain("大切な願い");
+    expect(JSON.stringify(elsewhere)).not.toContain(owner("a"));
+    expect(service.state("hinoki", owner("b"), now).ownLantern).toBeNull();
+    expect(await service.execute({ ...hang("b"), room: "hinoki" }, now)).toMatchObject({ ok: true });
+    expect(await service.execute({ kind: "remove", room: "hinoki", ownerHash: owner("a"), requestId: "remove_0001", id }, now)).toMatchObject({ ok: false, code: "not_found" });
+    expect(await service.execute({ kind: "remove", room: "komorebi", ownerHash: owner("a"), requestId: "remove_0002", id }, now)).toMatchObject({ ok: true });
+    expect(service.state("hinoki", owner("a"), now).ownLantern).toBeNull();
+    expect(await service.execute({ ...hang("a", "request_0003"), room: "hinoki" }, now)).toMatchObject({ ok: true });
+  });
+  it("releases the global quota on expiry and administrator removal", async () => {
+    const service = new LanternService();
+    const initial = await service.execute({ ...hang(), room: "komorebi" }, now);
+    if (!initial.ok) throw Error(initial.message);
+    expect(service.activeSignature(now)).toContain(initial.lanternId);
+    const expired = now + 24 * 3600000;
+    expect(service.state("hinoki", owner("a"), expired).ownLantern).toBeNull();
+    expect(service.activeSignature(expired)).toBe("");
+    const replacement = await service.execute({ ...hang("a", "request_0002"), room: "hinoki" }, expired);
+    if (!replacement.ok) throw Error(replacement.message);
+    expect(await service.execute({ kind: "moderate", id: replacement.lanternId }, expired)).toMatchObject({ ok: true });
+    expect(await service.execute({ ...hang("a", "request_0003"), room: "sugi" }, expired)).toMatchObject({ ok: true });
+  });
   it("blocks every new lantern in paid mode even when a client claims payment or uses an old free product", async () => {
     const repo = new MemoryLanternRepository();
     const free = new LanternService(repo);

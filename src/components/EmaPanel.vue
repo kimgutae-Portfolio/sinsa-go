@@ -9,6 +9,7 @@ import {
   type LanternState,
 } from "../shared/lanterns";
 import { wishProblem } from "../shared/moderation";
+import { isPublicRoom, roomName } from "../shared/multiplayer";
 
 type Result = Promise<{ ok: boolean; message: string } | undefined>;
 const props = defineProps<{
@@ -23,7 +24,7 @@ const props = defineProps<{
   remove: (id: string) => Result;
   report: (id: string) => Result;
 }>();
-const emit = defineEmits<{ placed: []; close: [] }>();
+const emit = defineEmits<{ placed: []; close: []; visitRoom: [room: string] }>();
 const productId = ref<string>(LANTERN_PRODUCTS[0].id),
   wish = ref(""),
   signature = ref(""),
@@ -41,7 +42,9 @@ const mine = computed(() =>
 const selected = computed(() =>
   props.state.lanterns.find((item) => item.slot === selectedSlot.value),
 );
-const writing = computed(() => !selected.value && !mine.value && open.value);
+const elsewhere = computed(() => props.state.ownLantern?.room !== props.state.room ? props.state.ownLantern : null);
+const ownRoomLabel = computed(() => elsewhere.value && isPublicRoom(elsewhere.value.room) ? roomName(elsewhere.value.room) : "別の境内");
+const writing = computed(() => !selected.value && !props.state.ownLantern && !mine.value && open.value);
 const design = computed(() =>
   lanternProduct(selected.value?.productId ?? productId.value)!,
 );
@@ -102,7 +105,7 @@ async function run(action: () => Result, fallback: string) {
   }
 }
 async function hang() {
-  if (busy.value || !props.connected || !consent.value || !open.value) return;
+  if (busy.value || !props.connected || !consent.value || !open.value || props.state.ownLantern) return;
   if (problem.value) {
     success.value = false;
     feedback.value = problem.value;
@@ -148,7 +151,7 @@ async function report() {
     </p>
     <div class="lantern-policy">
       <span>{{ state.policy.durationHours }}時間、掛けられます</span
-      ><span>このルームにおひとり1枚</span>
+      ><span>すべての境内を通して、おひとり1枚</span>
     </div>
     <div class="lantern-content">
       <div class="lantern-preview-column">
@@ -203,6 +206,21 @@ async function report() {
         <div v-if="!connected" class="lantern-feedback" role="status">
           境内につながると、絵馬を掛けたり外したりできます。
         </div>
+        <section v-if="elsewhere" class="ema-other-room" aria-label="私の絵馬がある境内">
+          <span class="eyebrow">私の絵馬</span>
+          <h3>{{ ownRoomLabel }}に、あなたの絵馬が掛かっています。</h3>
+          <p>絵馬はすべての境内を通して、おひとり1枚です。掛けた境内で確認・取り外しができます。</p>
+          <small>{{ date(elsewhere.expiresAt) }}まで掛かっています。</small>
+          <button
+            v-if="isPublicRoom(elsewhere.room)"
+            type="button"
+            class="lantern-text-button"
+            :disabled="busy || !connected"
+            @click="emit('visitRoom', elsewhere.room)"
+          >
+            {{ ownRoomLabel }}へ移動 <Icon name="arrow" :size="14" />
+          </button>
+        </section>
         <article v-if="selected" class="lantern-wish-card">
           <span class="eyebrow">{{
             state.mineIds.includes(selected.id)
@@ -223,7 +241,7 @@ async function report() {
           </button>
           <template v-else>
             <button
-              v-if="!mine && freeSlot !== null && open"
+              v-if="!state.ownLantern && !mine && freeSlot !== null && open"
               type="button"
               class="lantern-text-button"
               @click="selectedSlot = freeSlot"
@@ -262,7 +280,7 @@ async function report() {
         <div v-else-if="mine" class="lantern-wish-card">
           <Icon name="ema" :size="27" />
           <h3>あなたの絵馬は、すでに掛かっています。</h3>
-          <p>このルームでは、ひとつの願いを掛けられます。</p>
+          <p>絵馬はすべての境内を通して、おひとり1枚です。</p>
           <button class="lantern-text-button" @click="selectedSlot = mine.slot">
             自分の絵馬を見る <Icon name="arrow" :size="14" />
           </button>
@@ -336,6 +354,7 @@ async function report() {
             :disabled="
               busy ||
               !connected ||
+              Boolean(state.ownLantern) ||
               !consent ||
               !wish.trim() ||
               count > MAX_WISH_LENGTH ||

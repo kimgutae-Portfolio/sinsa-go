@@ -10,7 +10,7 @@ import type { VisitorSummary } from "./visitorStats";
 import { canOccupy } from "../game/collision";
 import type { Collider } from "../game/types";
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const ROOM_CAPACITY = 15;
 export const DEFAULT_ROOM = "komorebi";
 export const AUTO_ROOM = "auto";

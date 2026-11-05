@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
+import { createHash } from "node:crypto";
 import { createShrineServer } from "../server/app";
 import type { ServerMessage, Visitor } from "../src/shared/multiplayer";
 import { PROTOCOL_VERSION, PUBLIC_ROOMS, ROOM_CAPACITY } from "../src/shared/multiplayer";
@@ -555,6 +556,69 @@ describe("real WebSocket multiplayer", () => {
         next,
       ),
     ).toMatchObject({ lanterns: [] });
+  });
+  it("shares an owner's single ema quota across room tabs without sharing another room's wishes", async () => {
+    const key = "global_ema_owner_abcdefghijklmnopqrstuvwxyz";
+    const a = new Guest(url), b = new Guest(url), observer = new Guest(url);
+    guests.push(a, b, observer);
+    await a.join("komorebi", key);
+    await b.join("hinoki", key);
+    await observer.join("hinoki", "global_ema_observer_abcdefghijklmnopqrstuvwxyz");
+    // Arrival is already covered by movement tests; place these sessions at their own ema board.
+    for (const guest of [a, b]) {
+      const session = [...app.rooms.sessions].find(item => item.player.id === guest.id)!;
+      Object.assign(session.player, { x: 7, z: -1.7, motion: "Idle" });
+    }
+    const bCursor = b.messages.length, observerCursor = observer.messages.length;
+    const command = { type: "lantern-hang", productId: "paper-warm", signature: "", slot: 0 };
+    a.send({ ...command, requestId: "global_first_01", wish: "第一境内だけの願い" });
+    b.send({ ...command, requestId: "global_second_01", wish: "二つ目の願い" });
+    const first = await a.wait(message => message.type === "lantern-result" && message.requestId === "global_first_01");
+    expect(first).toMatchObject({ ok: true });
+    expect(await b.wait(message => message.type === "lantern-result" && message.requestId === "global_second_01")).toMatchObject({ ok: false, code: "visitor_limit" });
+    const personal = await b.wait(message => message.type === "lanterns" && message.ownLantern?.room === "komorebi", bCursor);
+    expect(personal).toMatchObject({ room: "hinoki", lanterns: [], mineIds: [], ownLantern: { room: "komorebi" } });
+    expect(JSON.stringify(personal)).not.toContain("第一境内だけの願い");
+    expect(JSON.stringify(personal)).not.toContain(key);
+    expect(JSON.stringify(personal)).not.toContain("ownerHash");
+    const other = await observer.wait(message => message.type === "lanterns", observerCursor);
+    expect(other).toMatchObject({ room: "hinoki", lanterns: [], ownLantern: null });
+    if (personal.type !== "lanterns" || !personal.ownLantern) throw Error("Expected own ema metadata");
+    const releasedCursor = b.messages.length;
+    a.send({ type: "lantern-remove", requestId: "global_remove_01", id: personal.ownLantern.id });
+    expect(await a.wait(message => message.type === "lantern-result" && message.requestId === "global_remove_01")).toMatchObject({ ok: true });
+    await b.wait(message => message.type === "lanterns" && message.ownLantern === null, releasedCursor);
+    b.send({ ...command, requestId: "global_second_02", wish: "第二境内の願い" });
+    expect(await b.wait(message => message.type === "lantern-result" && message.requestId === "global_second_02")).toMatchObject({ ok: true });
+    expect(b.socket.readyState).toBe(WebSocket.OPEN);
+    expect(app.rooms.lanterns.administration()).toHaveLength(1);
+  });
+  it("clears private ownership when an ema expires in an empty origin room without broadcasting every tick", async () => {
+    const key = "expiry_ema_owner_abcdefghijklmnopqrstuvwxyz";
+    const result = await app.rooms.lanterns.execute({
+      kind: "hang", room: "komorebi", ownerHash: createHash("sha256").update(key).digest("hex"),
+      requestId: "expiry_create_01", productId: "paper-warm", wish: "静かな願い", signature: "", slot: 0,
+    }, clock);
+    expect(result.ok).toBe(true);
+    const guest = new Guest(url);
+    guests.push(guest);
+    await guest.join("hinoki", key);
+    await guest.wait(message => message.type === "lanterns" && message.ownLantern?.room === "komorebi");
+    expect(app.rooms.rooms.has("komorebi")).toBe(false);
+    app.rooms.tick();
+    // A marker packet ensures the preceding tick has been delivered before inspecting the count.
+    guest.send({ type: "reset" });
+    await guest.wait(message => message.type === "correction");
+    const before = guest.messages.length;
+    clock += 24 * 3600000;
+    app.rooms.tick();
+    const expired = await guest.wait(message => message.type === "lanterns" && message.ownLantern === null, before);
+    expect(expired).toMatchObject({ room: "hinoki", lanterns: [], mineIds: [], ownLantern: null });
+    const afterExpiry = guest.messages.length;
+    app.rooms.tick();
+    guest.send({ type: "reset" });
+    await guest.wait(message => message.type === "correction", afterExpiry);
+    expect(guest.messages.slice(afterExpiry).some(message => message.type === "lanterns")).toBe(false);
   });
   it("restores private visitor statistics after reconnecting and does not share them with other visitors", async () => {
     const key = "stats_owner_abcdefghijklmnopqrstuvwxyz";

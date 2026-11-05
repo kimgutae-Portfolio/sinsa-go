@@ -38,13 +38,21 @@ export interface PublicLantern {
 export interface LanternPolicy {
   mode: "free" | "paid";
   durationHours: number;
+  /** Shared across every room; room visibility and slot capacity remain separate. */
   maxPerVisitor: number;
   capacity: number;
+}
+/** Sent only to the owner, including when their ema is in another room. */
+export interface OwnLantern {
+  id: string;
+  room: string;
+  expiresAt: number;
 }
 export interface LanternState {
   room: string;
   lanterns: PublicLantern[];
   mineIds: string[];
+  ownLantern: OwnLantern | null;
   policy: LanternPolicy;
 }
 export const FREE_LANTERN_POLICY: LanternPolicy = {

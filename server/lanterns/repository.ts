@@ -56,13 +56,15 @@ export class FileLanternRepository implements LanternRepository {
         "Invalid lantern store; restore a backup before starting the server.",
       );
     const ids = new Set<string>(),
-      slots = new Set<string>();
+      slots = new Set<string>(),
+      owners = new Set<string>();
     for (const item of data.lanterns) {
       const slot = `${item.room}:${item.slot}`;
-      if (ids.has(item.id) || slots.has(slot))
+      if (ids.has(item.id) || slots.has(slot) || owners.has(item.ownerHash))
         throw new Error("Duplicate lantern in store");
       ids.add(item.id);
       slots.add(slot);
+      owners.add(item.ownerHash);
     }
     return data.lanterns;
   }

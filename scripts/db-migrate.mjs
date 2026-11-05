@@ -34,6 +34,11 @@ await managementQuery(emaSyncSql, false);
 if (JSON.stringify(before) !== JSON.stringify(await managementQuery(metadata)))
   throw new Error("Existing service metadata changed during the shrine repair. Inspect concurrent schema changes before proceeding.");
 console.log("Updated only shrine_save_state for safe ema synchronization; no existing records were changed.");
+const emaOwnerSql = await readFile(new URL('../supabase/migrations/202611050002_shrine_ema_owner_limit.sql', import.meta.url), 'utf8');
+await managementQuery(emaOwnerSql, false);
+if (JSON.stringify(before) !== JSON.stringify(await managementQuery(metadata)))
+  throw new Error("Existing service metadata changed during the ema quota migration. Inspect concurrent schema changes before proceeding.");
+console.log("Enforced one ema owner across all rooms; existing records were retained.");
 const security = await managementQuery(`select c.relname, c.relrowsecurity as rls,
  has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE') as anon_access,
  has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE') as authenticated_access

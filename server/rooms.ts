@@ -58,7 +58,7 @@ export class ShrineRooms {
   private closing = false;
   private pendingChanges = new Set<Promise<void>>();
   readonly lanterns: LanternService;
-  private lanternSignatures = new Map<string, string>();
+  private lanternSignature = "";
   readonly rooms = new Map<string, Set<Session>>();
   readonly sessions = new Set<Session>();
   readonly capacity: number;
@@ -169,7 +169,6 @@ export class ShrineRooms {
     oldRoom?.delete(session);
     if (oldRoom?.size === 0) {
       this.rooms.delete(previous);
-      this.lanternSignatures.delete(previous);
     }
     this.rooms.set(id, next);
     session.room = id;
@@ -286,9 +285,7 @@ export class ShrineRooms {
       const room = this.rooms.get(session.room);
       room?.delete(session);
       if (room?.size === 0) this.rooms.delete(session.room);
-      if (!this.rooms.has(session.room))
-        this.lanternSignatures.delete(session.room);
-      else if (room) this.broadcast(session.room);
+      if (room?.size) this.broadcast(session.room);
       this.broadcastDirectory();
     });
     this.send(socket, { type: "rooms", rooms: this.directory() });
@@ -470,7 +467,7 @@ export class ShrineRooms {
       { kind: "moderate", id },
       this.now(),
     );
-    if (result.ok && record) this.broadcastLanterns(record.room);
+    if (result.ok && record) this.broadcastLanterns();
     return result;
   }
   private sendLanterns(session: Session) {
@@ -480,16 +477,11 @@ export class ShrineRooms {
       ...this.lanterns.state(session.room, session.ownerHash, this.now()),
     });
   }
-  private broadcastLanterns(room: string) {
-    for (const session of this.rooms.get(room) ?? [])
-      this.sendLanterns(session);
-    this.lanternSignatures.set(
-      room,
-      this.lanterns
-        .state(room, "", this.now())
-        .lanterns.map((item) => item.id)
-        .join(","),
-    );
+  private broadcastLanterns() {
+    // Each packet still contains only this session's room and private ownership metadata.
+    for (const session of this.sessions)
+      if (session.room) this.sendLanterns(session);
+    this.lanternSignature = this.lanterns.activeSignature(this.now());
   }
   private async changeLantern(
     session: Session,
@@ -558,7 +550,9 @@ export class ShrineRooms {
             this.now(),
           );
         this.publishProfile(session.ownerHash);
-        this.broadcastLanterns(room);
+        this.broadcastLanterns();
+      } else if (result.code === "visitor_limit") {
+        this.sendLanterns(session);
       }
     } catch {
       reply(
@@ -636,14 +630,8 @@ export class ShrineRooms {
     }
     for (const s of this.sessions) this.advance(s, now);
     for (const room of this.rooms.keys()) this.broadcast(room);
-    for (const room of this.rooms.keys()) {
-      const signature = this.lanterns
-        .state(room, "", now)
-        .lanterns.map((item) => item.id)
-        .join(",");
-      if (this.lanternSignatures.get(room) !== signature)
-        this.broadcastLanterns(room);
-    }
+    if (this.lanternSignature !== this.lanterns.activeSignature(now))
+      this.broadcastLanterns();
   }
   dispose() {
     this.closing = true;
@@ -657,7 +645,7 @@ export class ShrineRooms {
     }
     this.sessions.clear();
     this.rooms.clear();
-    this.lanternSignatures.clear();
+    this.lanternSignature = "";
   }
   private publishProfile(ownerHash: string) {
     if (this.closing || !ownerHash) return;

@@ -304,6 +304,11 @@
 .lantern-wish-card { color: var(--shrine-ink); }
 .lantern-wish-card blockquote { font-size: 22px; }
 .lantern-wish-card :is(p, small, .wish-signature) { color: var(--shrine-secondary); font-size: 12px; }
+.ema-other-room { margin: 0 0 23px; padding: 0 0 23px; border-bottom: 1px solid var(--shrine-line); }
+.ema-other-room h3 { color: var(--shrine-ink); font-family: var(--shrine-mincho); font-size: 17px; font-weight: 500; line-height: 1.9; margin: 13px 0; }
+.ema-other-room p { color: var(--shrine-secondary); font-size: 12px; line-height: 2; margin: 0 0 12px; }
+.ema-other-room small { display: block; color: var(--shrine-secondary); font-size: 11px; line-height: 1.9; }
+.ema-other-room .lantern-text-button { min-height: 44px; margin-top: 13px; }
 .lantern-text-button, .lantern-remove { color: var(--shrine-red); border-color: var(--shrine-line); font-size: 12px; }
 .lantern-feedback, .lantern-feedback.success { color: var(--shrine-ink); background: #e8e3d6; border-left: 2px solid var(--shrine-red); border-radius: 0; font-size: 12px; }
 
