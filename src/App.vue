@@ -26,11 +26,6 @@ import {
   validRoomTarget,
   type Presence,
 } from "./shared/multiplayer";
-import { inject as injectAnalytics } from "@vercel/analytics";
-
-// This app has no Vue Router. Use the framework-independent Vercel entry point.
-if (import.meta.env.PROD) injectAnalytics({ mode: "production" });
-
 const game = ref<InstanceType<typeof GameCanvas>>();
 const sound = ref<SoundSnapshot>({ state: "off", enabled: false, volume: 0.35, remembered: false });
 const audio = new ShrineAudio(value => { sound.value = value; });

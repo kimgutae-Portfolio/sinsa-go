@@ -92,9 +92,11 @@ export function createShrineServer(
         mime[extname(target)] ?? "application/octet-stream",
       );
       res.setHeader("X-Content-Type-Options", "nosniff");
+      // Keep Cloudflare's automatic analytics beacon out of administrator HTML.
+      const adminHtml = extname(target) === ".html" && /^\/admin(?:\/|$)/.test(pathname);
       res.setHeader(
         "Cache-Control",
-        target.includes(`${sep}assets${sep}`) ||
+        adminHtml ? "no-cache, no-transform" : target.includes(`${sep}assets${sep}`) ||
           (target.includes(`${sep}social${sep}`) && /-v\d+\.(jpg|png|webp)$/.test(target))
           ? "public, max-age=31536000, immutable"
           : "no-cache",

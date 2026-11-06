@@ -105,6 +105,12 @@ npm run admin:setup  # 최초 한 번만; 기존 설정은 덮어쓰지 않음
 
 현재 로컬 초기 관리자 설정은 완료되어 있습니다. 초기 비밀번호는 비공개 `data/admin-password.txt`에서 확인하세요. 운영에서는 서버 `ADMIN_PASSWORD` 환경 변수 또는 비공개 설정 파일을 사용합니다. 로그인 세션은 HttpOnly 쿠키로 관리하고, 서버 재시작 시 다시 로그인합니다. 자세한 설정·집계 기준은 [관리자 안내](docs/ADMIN.md)에 있습니다.
 
+## 웹 방문 분석
+
+`komorebi-jinja.com`의 웹 방문·페이지 성능 분석은 **Cloudflare Web Analytics**를 사용합니다. Cloudflare에 이미 켜져 있던 **자동 설정(유럽연합 방문자 제외)**을 유지하며, 프록시가 분석 스크립트를 자동 삽입하므로 앱에는 수동 비콘을 추가하지 않습니다. 이전 Vercel Analytics 주입 코드와 패키지는 제거했습니다. 설정은 Cloudflare 대시보드의 **Web Analytics → Manage site**에서 관리합니다. 관리자 방문이 게임 유입에 섞이지 않도록 서버는 `/admin`과 `/admin/*`의 HTML 응답에 `Cache-Control: no-cache, no-transform`을 보내 자동 삽입을 막습니다. 공개 게임 HTML과 API·정적 파일의 헤더는 유지합니다. 연결 방법과 `no-transform` 동작은 [Cloudflare 공식 안내](https://developers.cloudflare.com/web-analytics/get-started/)를 참고하세요.
+
+아래의 서버 방문자 기록과 참배·오미쿠지·에마 통계는 별도로 유지합니다. 웹 분석 수치의 수집 여부는 Cloudflare 대시보드에서 확인합니다.
+
 ## 익명 방문자 기록
 
 현재 로컬 `.env`는 **기존 Supabase 프로젝트의 `shrine_*` 전용 테이블**을 사용합니다. 사용자의 선택에 따라 기존 JSON 기록은 로컬에 보관하고, 전환 뒤의 새 기록부터 DB에 저장합니다. 기존 서비스의 테이블·권한은 변경하지 않았습니다. 연결·설치·장애 처리와 운영 제한은 [Supabase 안내](docs/SUPABASE.md)를 참고하세요.

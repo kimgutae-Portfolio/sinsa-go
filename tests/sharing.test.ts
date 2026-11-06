@@ -99,7 +99,9 @@ describe("crawler HTTP responses", () => {
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test socket');
     const origin = `http://127.0.0.1:${address.port}`;
-    const html = await (await fetch(origin, { headers: { 'User-Agent': 'Twitterbot/1.0' } })).text();
+    const publicPage = await fetch(origin, { headers: { 'User-Agent': 'Twitterbot/1.0' } });
+    expect(publicPage.headers.get('cache-control')).not.toContain('no-transform');
+    const html = await publicPage.text();
     expect(html).toContain(`property="og:title" content="${SITE.name}"`);
     for (const [path, type] of Object.entries(files)) {
       const response = await fetch(origin + path);
@@ -112,8 +114,12 @@ describe("crawler HTTP responses", () => {
         expect(response.headers.get('cache-control')).toContain('immutable');
       }
     }
-    const admin = await fetch(origin + '/admin');
-    expect(admin.headers.get('x-robots-tag')).toContain('noindex');
+    for (const path of ['/admin', '/admin/visitors']) {
+      const admin = await fetch(origin + path);
+      expect(admin.headers.get('content-type')).toContain('text/html');
+      expect(admin.headers.get('x-robots-tag')).toContain('noindex');
+      expect(admin.headers.get('cache-control')).toContain('no-transform');
+    }
     const sitemap = await fetch(origin + '/sitemap.xml');
     expect(sitemap.headers.get('content-type')).toContain('application/xml');
     expect(await sitemap.text()).toContain(SITE.origin);
