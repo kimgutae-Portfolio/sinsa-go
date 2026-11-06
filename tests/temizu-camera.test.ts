@@ -7,7 +7,7 @@ import { AssetLoader } from "../src/game/AssetLoader";
 import { World } from "../src/game/World";
 import { disposeObject } from "../src/game/geometry";
 
-const player = new Vector3(TEMIZU_LAYOUT.approach.x, 0, TEMIZU_LAYOUT.approach.z);
+const player = new Vector3(TEMIZU_LAYOUT.stance.x, 0, TEMIZU_LAYOUT.stance.z);
 const basinCollider = {
   minX: TEMIZU_LAYOUT.x - TEMIZU_LAYOUT.width / 2,
   maxX: TEMIZU_LAYOUT.x + TEMIZU_LAYOUT.width / 2,
@@ -28,14 +28,15 @@ describe("the hand-washing camera", () => {
       controller.update(0, player, [basinCollider], true);
       controller.setTemizuView(true);
       settle(controller);
+      const z = TEMIZU_LAYOUT.stance.z;
       const points = [
-        new Vector3(-7, 1.73, 4.55), // top of the hood
-        new Vector3(-7.18, 0.88, 5.33), // receiving palm
-        new Vector3(-6.85, 1.1, 5.2), // ladle above the palm
-        new Vector3(-7.10, 0.84, 5.3), // falling water at the near rim
-        new Vector3(-7, 1.52, 5.1), // handle rinse with the cup raised
-        new Vector3(-6.87, 0.8, 5.4), // dipping just over the basin edge
-        new Vector3(-7, 0.15, 4.55),
+        new Vector3(-7, 1.73, z), // top of the hood
+        new Vector3(-7.15, 0.88, z + 0.33), // compact receiving palm
+        new Vector3(-7.18, 1.08, z + 0.34), // ladle above the palm
+        new Vector3(-7.15, 0.87, z + 0.33), // falling water at the near rim
+        new Vector3(-6.83, 1.43, z + 0.32), // upright handle rinse
+        new Vector3(-6.72, 0.78, z + 0.78), // ladle dipping into the basin
+        new Vector3(-7, 0.15, z),
       ];
       const projected = points.map(point => point.clone().project(controller.camera));
       for (const point of projected) {
@@ -93,12 +94,12 @@ describe("the hand-washing camera", () => {
               }
         }
         for (const object of [palm, cup]) {
-          // A mitten can tuck partly into its sleeve; sample its exposed front
-          // rather than assuming its geometric centre is a visible surface.
-          const samples = object === palm ? [
-            new Vector3(0, -0.2, 0.98), new Vector3(-0.4, 0, 0.917),
-            new Vector3(0.4, 0, 0.917), new Vector3(0, 0.2, 0.98),
-          ] : [
+          // The cupped palm turns up with its wrist. Sample the actual rounded
+          // surface on all sides instead of the previous fixed forward face.
+          const samples = object === palm ? Array.from({ length: 20 }, (_, i) => {
+            const y = 1 - 2 * (i + 0.5) / 20, r = Math.sqrt(1 - y * y);
+            return new Vector3(Math.cos(i * 2.39996) * r, y, Math.sin(i * 2.39996) * r);
+          }) : [
             // The centre of the open bowl is air; sample its solid sides.
             new Vector3(0.086, 0, 0), new Vector3(-0.086, 0, 0),
             new Vector3(0, 0, 0.086), new Vector3(0, 0, -0.086),
@@ -118,18 +119,19 @@ describe("the hand-washing camera", () => {
             visible.push(isPart);
             blockers.push(`${first?.object.name}/${first?.object.parent?.name}`);
           }
-          expect(visible.filter(Boolean).length, `${width}px: ${object.name} blocked by ${blockers.join(",")}`).toBeGreaterThanOrEqual(object === palm ? 2 : 1);
+          expect(visible.filter(Boolean).length, `${width}px: ${object.name} blocked by ${blockers.join(",")}`).toBeGreaterThanOrEqual(object === palm ? 6 : 2);
         }
       }
       // Finishing must not collapse the normal camera into a phantom tall
-      // basin collider or leave the canopy between the viewer and character.
+      // basin collider or leave the canopy across the visitor's face. Resting
+      // mittens are now beside the body and naturally below the stone rim.
       traveler.update(10, new Vector2(), true);
       traveler.root.updateMatrixWorld(true);
       controller.setTemizuView(false);
       for (let frame = 0; frame < 180; frame++) controller.update(1 / 60, player, world.colliders);
       expect(traveler.state).toBe("Idle");
       expect(controller.camera.position.distanceTo(player)).toBeGreaterThan(7);
-      for (const object of [traveler.root.getObjectByName("Face")!, palm]) {
+      for (const object of [traveler.root.getObjectByName("Face")!]) {
         const target = object.localToWorld(new Vector3(0, -0.2, 0.98));
         const ray = new Raycaster(
           controller.camera.position, target.clone().sub(controller.camera.position).normalize(),

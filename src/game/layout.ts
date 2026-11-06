@@ -56,5 +56,7 @@ export const TEMIZU_LAYOUT = {
   width: 2.5,
   depth: 1.5,
   approach: { x: -7, z: 4.55 },
+  /** A final small step beyond the path grid, safely before the basin collider. */
+  stance: { x: -7, z: 4.86 },
   interaction: { x: -7, z: 4.6 },
 } as const;

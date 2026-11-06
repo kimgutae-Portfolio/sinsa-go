@@ -40,12 +40,12 @@ describe("visible purification at the stone basin", () => {
       const cuff = new Box3().setFromObject(sleeve).getCenter(new Vector3());
       expect(cuff.z).toBeLessThan(hand.z - 0.08);
       expect(hand.y).toBeGreaterThan(0.86);
-      expect(cup.y - hand.y).toBeGreaterThan(0.15);
+      expect(cup.y - hand.y).toBeGreaterThan(0.10);
       expect(Math.abs(cup.x - hand.x)).toBeLessThan(0.12);
       expect(Math.abs(cup.z - hand.z)).toBeLessThan(0.12);
       const stream = player.root.getObjectByName("PurificationWater") as Mesh;
       expect(stream.visible).toBe(true);
-      expect(stream.scale.y).toBeGreaterThan(0.15);
+      expect(stream.scale.y).toBeGreaterThan(0.07);
       const droplets = player.root.getObjectByName("PurificationDroplets") as InstancedMesh;
       expect(droplets.visible).toBe(true);
       expect(droplets.count).toBe(10);

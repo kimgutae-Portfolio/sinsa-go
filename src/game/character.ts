@@ -4,6 +4,7 @@ import type { ritualFrame } from "./ritual";
 /** Rigid rounded pieces; no Bones, skeleton, skin weights or elbow/knee chains. */
 export interface TravelerParts {
   torso: THREE.Group;
+  head?: THREE.Group;
   leftArm: THREE.Group;
   rightArm: THREE.Group;
   legs: THREE.Group[];
@@ -11,6 +12,7 @@ export interface TravelerParts {
 }
 export const TRAVELER_BODY_Y = 0.56;
 export const TRAVELER_REST_HAND = { x: 0.365, y: 0.13, z: 0.04 } as const;
+export const TRAVELER_HEAD_PIVOT = { x: 0, y: 0.42, z: 0.04 } as const;
 const HAND_X = TRAVELER_REST_HAND.x;
 
 function clay(color: string) {
@@ -117,15 +119,21 @@ export function createTraveler(parts: TravelerParts, tint = "#85866a") {
     [0.444, -0.280], [0.429, -0.185], [0.405, -0.070], [0.374, 0.065],
     [0.339, 0.190], [0.297, 0.295], [0.248, 0.365], [0.187, 0.402], [0, 0.405],
   ], coat, 0.73, 32);
+  // A rigid neck pivot lets the traveler nod without moving the cape or sleeves.
+  const head = new THREE.Group();
+  head.name = "TravelerHead";
+  head.position.set(TRAVELER_HEAD_PIVOT.x, TRAVELER_HEAD_PIVOT.y, TRAVELER_HEAD_PIVOT.z);
+  parts.head = head;
+  torso.add(head);
   const hood = new THREE.Mesh(hoodGeometry(), hoodMaterial);
   hood.name = "Hood";
-  hood.position.y = 0.765;
+  hood.position.set(0, 0.765 - TRAVELER_HEAD_PIVOT.y, -TRAVELER_HEAD_PIVOT.z);
   hood.castShadow = true;
   hood.receiveShadow = true;
-  torso.add(hood);
-  pebble(torso, "Face", [0.350, 0.330, 0.170], [0, 0.725, 0.20], ivory, 24);
+  head.add(hood);
+  pebble(head, "Face", [0.350, 0.330, 0.170], [0, 0.725 - TRAVELER_HEAD_PIVOT.y, 0.20 - TRAVELER_HEAD_PIVOT.z], ivory, 24);
   for (const side of [-1, 1]) {
-    pebble(torso, "Eye", [0.018, 0.026, 0.012], [side * 0.101, 0.752, 0.367], ink, 12);
+    pebble(head, "Eye", [0.018, 0.026, 0.012], [side * 0.101, 0.752 - TRAVELER_HEAD_PIVOT.y, 0.367 - TRAVELER_HEAD_PIVOT.z], ink, 12);
   }
   const smile = new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(
     new THREE.Vector3(-0.026, 0.650, 0.369),
@@ -133,7 +141,8 @@ export function createTraveler(parts: TravelerParts, tint = "#85866a") {
     new THREE.Vector3(0.026, 0.650, 0.369),
   ), 8, 0.005, 5, false), ink);
   smile.name = "Smile";
-  torso.add(smile);
+  smile.position.set(0, -TRAVELER_HEAD_PIVOT.y, -TRAVELER_HEAD_PIVOT.z);
+  head.add(smile);
   // Two quiet folds wrap around the neck; the back keeps the same simple silhouette.
   for (const [index, y] of [0.378, 0.431].entries()) {
     const fold = new THREE.Mesh(new THREE.TorusGeometry(index ? 0.233 : 0.244, 0.055, 6, 28), scarf);
@@ -173,6 +182,11 @@ export function createTraveler(parts: TravelerParts, tint = "#85866a") {
 export function restTraveler(parts: TravelerParts) {
   parts.torso.rotation.set(0, 0, 0);
   parts.torso.position.y = TRAVELER_BODY_Y;
+  parts.torso.position.z = 0;
+  if (parts.head) {
+    parts.head.position.set(TRAVELER_HEAD_PIVOT.x, TRAVELER_HEAD_PIVOT.y, TRAVELER_HEAD_PIVOT.z);
+    parts.head.rotation.set(0, 0, 0);
+  }
   parts.leftArm.position.set(-HAND_X, TRAVELER_REST_HAND.y, TRAVELER_REST_HAND.z);
   parts.rightArm.position.set(HAND_X, TRAVELER_REST_HAND.y, TRAVELER_REST_HAND.z);
   for (const arm of [parts.leftArm, parts.rightArm]) {

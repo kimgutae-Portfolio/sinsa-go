@@ -111,9 +111,11 @@ describe("rounded shrine traveler", () => {
     const mouthTime = ALIGN_DURATION + TEMIZU_STEPS[0].duration + TEMIZU_STEPS[1].duration + TEMIZU_STEPS[2].duration * 0.625;
     controller.update(mouthTime - firstTime - TEMIZU_STEPS[0].duration, new Vector2(), true);
     controller.root.updateMatrixWorld(true);
-    const hand = controller.root.getObjectByName('LeftHandAnchor')!.getWorldPosition(new Vector3());
+    const hand = controller.root.getObjectByName('LeftHandAnchor')!;
     const mouth = new Box3().setFromObject(controller.root.getObjectByName('Smile')!).getCenter(new Vector3());
-    expect(hand.distanceTo(mouth)).toBeLessThan(0.21);
+    const palm = new Box3().setFromObject(hand.getObjectByName('Mitten')!);
+    expect(palm.clampPoint(mouth, new Vector3()).distanceTo(mouth)).toBeLessThan(0.12);
+    expect(controller.root.getObjectByName('TravelerHead')!.rotation.x).toBeGreaterThan(0.3);
     expect(controller.root.getObjectByName('PurificationWater')!.visible).toBe(false);
     controller.reset();
     expect(controller.root.getObjectByName('TemizuLadle')!.visible).toBe(false);

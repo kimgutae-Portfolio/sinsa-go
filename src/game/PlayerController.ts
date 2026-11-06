@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import type { AssetLoader } from "./AssetLoader";
 import type { CameraController } from "./CameraController";
-import { createTraveler, prayTraveler, restTraveler, walkTraveler, TRAVELER_BODY_Y, TRAVELER_REST_HAND } from "./character";
+import { createTraveler, prayTraveler, restTraveler, walkTraveler, TRAVELER_BODY_Y, type TravelerParts } from "./character";
+import { TemizuAnimation } from "./TemizuAnimation";
 import type { Collider, PlayerState } from "./types";
 import { canOccupy } from "./collision";
 import {
@@ -26,7 +27,8 @@ export class PlayerController {
   private rightArm = new THREE.Group();
   private legs = [new THREE.Group(), new THREE.Group()];
   private hands = [new THREE.Group(), new THREE.Group()];
-  private parts = { torso: this.torso, leftArm: this.leftArm, rightArm: this.rightArm, legs: this.legs, hands: this.hands };
+  private parts: TravelerParts = { torso: this.torso, leftArm: this.leftArm, rightArm: this.rightArm, legs: this.legs, hands: this.hands };
+  private temizuAnimation = new TemizuAnimation(this.parts);
   private visual = new THREE.Group();
   private imported?: THREE.Group;
   private mixer?: THREE.AnimationMixer;
@@ -54,7 +56,15 @@ export class PlayerController {
   private cupPosition = new THREE.Vector3();
   private receivingPosition = new THREE.Vector3();
   private streamDirection = new THREE.Vector3();
+  private cupNormal = new THREE.Vector3();
+  private cupRimDirection = new THREE.Vector3();
+  private inverseRoot = new THREE.Quaternion();
   private readonly streamUp = new THREE.Vector3(0, 1, 0);
+  private otherGrip = new THREE.Vector3();
+  private ladleX = new THREE.Vector3();
+  private ladleY = new THREE.Vector3();
+  private ladleZ = new THREE.Vector3();
+  private ladleBasis = new THREE.Matrix4();
 
   /** Praying or purifying: movement and other experiences wait. */
   get busy() {
@@ -142,10 +152,10 @@ export class PlayerController {
       roughness: 0.8,
     });
     const handle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.016, 0.019, 0.36, 10),
+      new THREE.CylinderGeometry(0.016, 0.019, 0.42, 10),
       bamboo,
     );
-    handle.position.y = -0.17;
+    handle.position.y = -0.20;
     const cup = new THREE.Mesh(
       new THREE.CylinderGeometry(0.092, 0.083, 0.105, 20, 1, true),
       new THREE.MeshStandardMaterial({
@@ -156,7 +166,7 @@ export class PlayerController {
     );
     cup.name = "LadleCup";
     cup.rotation.x = Math.PI / 2;
-    cup.position.set(0, -0.35, 0.035);
+    cup.position.set(0, -0.41, 0.035);
     const cupRim = new THREE.Mesh(new THREE.TorusGeometry(0.089, 0.008, 6, 24), bamboo);
     cupRim.rotation.x = Math.PI / 2;
     cupRim.position.y = 0.052;
@@ -171,7 +181,6 @@ export class PlayerController {
     cupWater.position.y = 0.033;
     cup.add(cupRim, cupBottom, cupWater);
     this.ladle.add(handle, cup);
-    this.ladle.position.set(0, -0.03, 0.02);
     this.ladle.visible = false;
     // Keep unused props in the owned scene so unmount can release them too.
     this.root.add(this.ladle);
@@ -215,14 +224,27 @@ export class PlayerController {
     this.resetPose();
   }
 
-  private holdLadle(hand: 0 | 1) {
-    if (this.imported) {
-      this.ladle.visible = false;
-      return;
-    }
-    const anchor = this.hands[hand]!;
-    if (this.ladle.parent !== anchor) anchor.add(this.ladle);
-    this.ladle.visible = true;
+  private placeLadle() {
+    this.ladle.visible = !this.imported && this.temizuAnimation.ladleVisible;
+    if (!this.ladle.visible) return;
+    this.root.updateMatrixWorld(true);
+    this.hands[0]!.getWorldPosition(this.ladle.position);
+    this.root.worldToLocal(this.ladle.position);
+    this.hands[1]!.getWorldPosition(this.otherGrip);
+    this.root.worldToLocal(this.otherGrip);
+    // The handle crosses between touching mittens, never snapping to a new parent.
+    this.ladle.position.lerp(this.otherGrip, this.temizuAnimation.grip);
+    this.ladle.position.y -= 0.015;
+    this.ladleY.copy(this.temizuAnimation.ladleDirection)
+      .applyQuaternion(this.torso.quaternion).negate().normalize();
+    this.ladleZ.set(0, 1, 0).addScaledVector(this.ladleY, -this.ladleY.y);
+    if (this.ladleZ.lengthSq() < 0.000001) this.ladleZ.set(0, 0, -1);
+    this.ladleZ.normalize();
+    this.ladleX.crossVectors(this.ladleY, this.ladleZ).normalize();
+    this.ladleZ.crossVectors(this.ladleX, this.ladleY);
+    this.ladle.quaternion.setFromRotationMatrix(this.ladleBasis.makeBasis(this.ladleX, this.ladleY, this.ladleZ));
+    if (this.temizuAnimation.ladleDirection.y < 0.8)
+      this.ladle.rotateY((this.temizuAnimation.grip - 0.5) * this.temizuAnimation.pouring * 0.8);
   }
 
   private pour(amount: number, receiving: 0 | 1) {
@@ -236,10 +258,17 @@ export class PlayerController {
     this.root.updateMatrixWorld(true);
     cup.getWorldPosition(this.cupPosition);
     this.root.worldToLocal(this.cupPosition);
-    this.cupPosition.y -= 0.025;
     this.hands[receiving]!.getWorldPosition(this.receivingPosition);
     this.root.worldToLocal(this.receivingPosition);
     this.receivingPosition.y += 0.035;
+    // Water leaves the rim nearest the palm, rather than the bowl's bottom.
+    this.cupNormal.set(0, 1, 0).transformDirection(cup.matrixWorld)
+      .applyQuaternion(this.inverseRoot.copy(this.root.quaternion).invert());
+    this.cupRimDirection.subVectors(this.receivingPosition, this.cupPosition);
+    this.cupRimDirection.addScaledVector(this.cupNormal, -this.cupRimDirection.dot(this.cupNormal));
+    if (this.cupRimDirection.lengthSq() > 0.000001)
+      this.cupRimDirection.normalize().multiplyScalar(0.075);
+    this.cupPosition.addScaledVector(this.cupNormal, 0.04).add(this.cupRimDirection);
     this.streamDirection.subVectors(this.cupPosition, this.receivingPosition);
     const length = Math.max(0.025, this.streamDirection.length());
     this.water.visible = true;
@@ -271,7 +300,7 @@ export class PlayerController {
     this.ritualProgress = Math.min(1, this.purifyTime / TEMIZU_DURATION);
     const frame = temizuFrame(this.purifyTime);
     this.ritualStep = frame.index;
-    const target = TEMIZU_LAYOUT.approach;
+    const target = TEMIZU_LAYOUT.stance;
     if (frame.kind === "align") {
       const t = THREE.MathUtils.smoothstep(
         this.purifyTime / ALIGN_DURATION,
@@ -288,60 +317,14 @@ export class PlayerController {
         Math.cos(-this.startRotation),
       );
       this.root.rotation.y = this.startRotation + turn * t;
-      return;
-    }
-    this.root.position.set(target.x, 0, target.z);
-    this.root.rotation.y = 0;
-    this.resetPose();
-    const p = frame.phase;
-    const ease = Math.sin(p * Math.PI) ** 0.35;
-    const flow = (start: number, end: number) =>
-      THREE.MathUtils.smoothstep(p, start, start + 0.07) *
-      (1 - THREE.MathUtils.smoothstep(p, end - 0.08, end));
-    const tip = flow(0.22, 0.74);
-    const dip = Math.sin(THREE.MathUtils.clamp(p / 0.28, 0, 1) * Math.PI);
-    this.torso.rotation.x = 0.035 * ease;
-    // Move the soft mitten pieces directly; there are no arm or elbow chains.
-    const place = (index: 0 | 1, x: number, y: number, z: number) => {
-      const hand = index === 0 ? this.leftArm : this.rightArm;
-      hand.position.set(
-        THREE.MathUtils.lerp((index === 0 ? -1 : 1) * TRAVELER_REST_HAND.x, x, ease),
-        THREE.MathUtils.lerp(TRAVELER_REST_HAND.y, y, ease),
-        THREE.MathUtils.lerp(TRAVELER_REST_HAND.z, z, ease),
-      );
-    };
-    if (frame.kind === "left" || frame.kind === "right") {
-      const right = frame.kind === "left";
-      const holding = right ? 1 : 0;
-      const receiving = right ? 0 : 1;
-      const side = right ? 1 : -1;
-      this.holdLadle(holding);
-      place(holding, side * 0.18, 0.53 - dip * 0.27, 0.47 + dip * 0.37);
-      place(receiving, -side * 0.10, 0.34, 0.70);
-      // Sleeve openings trail behind the palms rather than rising over the face.
-      (holding === 0 ? this.leftArm : this.rightArm).rotation.x = -0.95 * ease;
-      (receiving === 0 ? this.leftArm : this.rightArm).rotation.x = -0.95 * ease;
-      this.hands[holding]!.rotation.set(-0.85 * ease, 0, -side * 0.65 * tip);
-      this.hands[receiving]!.rotation.x = 0.90 * ease;
-      this.pour(flow(0.27, 0.69), receiving);
-    } else if (frame.kind === "mouth") {
-      this.holdLadle(1);
-      const sip = Math.sin(THREE.MathUtils.clamp((p - 0.38) / 0.5, 0, 1) * Math.PI);
-      place(1, 0.18 + sip * 0.13, 0.53 - sip * 0.10, 0.47 - sip * 0.10);
-      place(0, -0.10 + sip * 0.10, 0.34 + sip * 0.34, 0.70 - sip * 0.33);
-      this.rightArm.rotation.x = -0.95 * ease;
-      this.leftArm.rotation.x = -0.95 * ease;
-      this.hands[1]!.rotation.set(-0.85 * ease, 0, -0.65 * tip);
-      this.hands[0]!.rotation.x = 0.90 + sip * 0.35;
-      this.pour(flow(0.20, 0.42), 0);
     } else {
-      this.holdLadle(1);
-      const lift = Math.sin(p * Math.PI) ** 0.5;
-      place(1, 0.16, 0.62, 0.54);
-      place(0, -0.12, 0.34, 0.49);
-      this.hands[1]!.rotation.x = -1.1 * ease - lift * (Math.PI - 1.1);
-      this.pour(flow(0.25, 0.76), 1);
+      this.root.position.set(target.x, 0, target.z);
+      this.root.rotation.y = 0;
     }
+    this.resetPose();
+    this.temizuAnimation.update(this.purifyTime);
+    this.placeLadle();
+    this.pour(this.temizuAnimation.pouring, this.temizuAnimation.receiving);
     if (frame.done) this.finishPurify(true);
   }
 

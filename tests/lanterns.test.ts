@@ -347,7 +347,8 @@ describe("ema board rendering and navigation", () => {
     expect([...steps].filter((step) => step >= 0)).toEqual([0, 1, 2, 3]);
     expect(done).toHaveBeenCalledOnce();
     expect(player.state).toBe("Idle");
-    expect(player.root.position.distanceTo(target)).toBeLessThan(0.01);
+    const stance = new Vector3(TEMIZU_LAYOUT.stance.x, 0, TEMIZU_LAYOUT.stance.z);
+    expect(player.root.position.distanceTo(stance)).toBeLessThan(0.01);
     assets.dispose();
     disposeObject(player.root);
     disposeObject(world.root);

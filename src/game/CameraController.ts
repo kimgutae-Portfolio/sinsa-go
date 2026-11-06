@@ -19,7 +19,7 @@ export class CameraController {
   private hit = new Vector3();
   private normalPosition = new Vector3();
   private lookTarget = new Vector3();
-  private temizuTarget = new Vector3(TEMIZU_LAYOUT.x, 1.05, TEMIZU_LAYOUT.approach.z + 0.6);
+  private temizuTarget = new Vector3(TEMIZU_LAYOUT.x, 1.05, TEMIZU_LAYOUT.stance.z + 0.6);
   private temizuPosition = new Vector3();
   private temizuActive = false;
   private temizuBlend = 0;
@@ -119,7 +119,7 @@ export class CameraController {
     // Portrait looks more frontally so the hood's full width remains inside
     // the narrow frame and neither side post cuts across the character.
     if (this.portrait) this.temizuPosition.set(1.2, 1.2, 5.15);
-    else this.temizuPosition.set(2.8, 1.2, 1.85);
+    else this.temizuPosition.set(1.8, 0.9, 2.8);
     this.temizuPosition.add(this.temizuTarget);
     this.camera.position.copy(this.normalPosition).lerp(this.temizuPosition, this.temizuBlend);
     this.lookTarget.copy(this.target).lerp(this.temizuTarget, this.temizuBlend);
