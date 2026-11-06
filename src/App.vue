@@ -578,6 +578,7 @@ onBeforeUnmount(() => {
               <Icon name="arrow" :size="15" />
             </button>
             <p class="room-directory-note">おまかせでは8名未満の境内を優先し、どこも賑わっているときは、空きの多い境内へご案内します。</p>
+            <p class="room-directory-note">人の少ないときは、風景として旅人が現れます。参拝者数には含まれません。</p>
             <p v-if="presence.switchingTo" class="room-switch-status" role="status">
               {{ presence.switchingTo === AUTO_ROOM ? '境内をご案内しています。' : `${roomName(presence.switchingTo)}へ移動しています。` }}
             </p>

@@ -21,6 +21,7 @@ import { LanternGarden } from "./LanternGarden";
 import { EmaBoard } from "./EmaBoard";
 import { MultiplayerClient } from "./MultiplayerClient";
 import { RemotePlayer } from "./RemotePlayer";
+import { AmbientVisitors } from "./AmbientVisitors";
 import type { Visitor } from "../shared/multiplayer";
 import { RITUAL_DURATION } from "./ritual";
 
@@ -73,6 +74,10 @@ export class Game {
   private ready = false;
   private multiplayer?: MultiplayerClient;
   private visitors = new Map<string, RemotePlayer>();
+  private ambientVisitors = new AmbientVisitors({
+    reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  });
+  private peerPositions: THREE.Vector3[] = [];
   private synchronizedRitual: number | null = null;
   private awaitingPrayer = 0;
   private marker = new THREE.Vector3();
@@ -121,7 +126,11 @@ export class Game {
     this.renderer.domElement.setAttribute("role", "img");
     container.appendChild(this.renderer.domElement);
     this.scene.add(this.world.root, this.player.root, createSky());
-    this.scene.add(this.lanternGarden.root, this.emaBoard.root);
+    this.scene.add(
+      this.lanternGarden.root,
+      this.emaBoard.root,
+      this.ambientVisitors.root,
+    );
     this.scene.add(new THREE.HemisphereLight("#dfebee", "#645e47", 1.65));
     const sun = new THREE.DirectionalLight("#ffeace", 3.1);
     sun.position.set(-12, 24, 10);
@@ -238,6 +247,9 @@ export class Game {
             this.scene.add(visitor.root);
           }
         }
+        this.peerPositions.length = 0;
+        for (const visitor of this.visitors.values())
+          this.peerPositions.push(visitor.root.position);
       },
       onNotice: (message) => {
         this.awaitingPrayer = 0;
@@ -340,6 +352,11 @@ export class Game {
           this.multiplayer?.serverNow ?? Date.now(),
           this.player.root.position,
         );
+      this.ambientVisitors.update(
+        dt,
+        this.player.root.position,
+        this.peerPositions,
+      );
       this.camera.setTemizuView(this.player.state === "Purify" && !this.paused);
       // Beside the ema board, look past the 献灯 rack from the open side.
       if (this.player.state !== "Purify" && this.cameraFocus !== null) this.camera.ease(this.cameraFocus, dt);
@@ -587,8 +604,10 @@ export class Game {
     this.multiplayer?.dispose();
     this.lanternGarden.dispose();
     this.emaBoard.dispose();
+    this.ambientVisitors.dispose();
     for (const visitor of this.visitors.values()) visitor.dispose();
     this.visitors.clear();
+    this.peerPositions.length = 0;
     cancelAnimationFrame(this.frameId);
     this.resizeObserver.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibility);

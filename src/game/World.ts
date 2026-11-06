@@ -732,17 +732,7 @@ export class World {
     }
     for (const y of [...EMA_ROW_BARS, 0.68])
       box(g, [EMA_LAYOUT.width + 0.3, 0.07, 0.1], [0, y, 0], C.wood);
-    // A crowded lower row of offered ema keeps the board lively.
-    const wishes = ["心願成就", "家内安全", "学業成就", "無病息災", "良縁祈願"];
-    for (let i = 0; i < 9; i++) {
-      const x = -EMA_LAYOUT.width / 2 + 0.3 + i * ((EMA_LAYOUT.width - 0.6) / 8);
-      const y = 0.45;
-      const tilt = (this.random() - 0.5) * 0.24;
-      const plaque = box(g, [0.38, 0.3, 0.025], [x, y, 0.06], i % 3 ? "#d8b987" : "#caa575");
-      plaque.rotation.z = tilt;
-      const wish = inscription(g, wishes[i % wishes.length]!, [x, y, 0.08], 0.3, 0.17, false);
-      wish.rotation.z = tilt;
-    }
+    // Visitor wishes are owned by EmaBoard; quiet-board ornaments are scenery.
     roundedBox(g, [1.7, 0.36, 0.08], [0, 2.82, 0.08], surface("wood", "#7a6248"), 0.02);
     inscription(g, "絵馬掛所", [0, 2.82, 0.13], 1.5, 0.28);
     roof(g, EMA_LAYOUT.width + 1, 1.6, 3.05);

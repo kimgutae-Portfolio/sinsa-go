@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { EMA_LAYOUT as L } from "./layout";
 import { lanternProduct, type PublicLantern } from "../shared/lanterns";
 import { disposeObject } from "./geometry";
+import { createEmaScenery } from "./EmaScenery";
 
 /** Height of each slot row's hanging bar, top row first. */
 export const EMA_ROW_BARS = [2.45, 1.85, 1.25] as const;
@@ -25,9 +26,11 @@ export class EmaBoard {
   private color = new THREE.Color();
   private items: PublicLantern[] = [];
   private time = 0;
+  private scenery = createEmaScenery();
 
   constructor() {
     this.root.position.set(L.x, 0, L.z);
+    this.root.add(this.scenery.root);
     const shape = new THREE.Shape();
     shape.moveTo(-0.22, -0.17);
     shape.lineTo(0.22, -0.17);
@@ -88,6 +91,7 @@ export class EmaBoard {
 
   setEma(items: PublicLantern[]) {
     this.items = items.filter((item) => item.slot >= 0 && item.slot < 24);
+    this.scenery.empty.visible = this.items.length === 0;
     this.update(0);
   }
 
