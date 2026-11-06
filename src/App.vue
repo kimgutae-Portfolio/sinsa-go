@@ -17,6 +17,7 @@ import type {
 } from "./game/types";
 import { RITUAL_STEPS, TEMIZU_STEPS, TEMIZU_DURATION } from "./game/ritual";
 import { PLAYER_SPAWN } from "./game/config";
+import { layoutLabels, type Box, type LabelPlacement } from "./game/labelLayout";
 import {
   AUTO_ROOM,
   PUBLIC_ROOMS,
@@ -32,6 +33,18 @@ const audio = new ShrineAudio(value => { sound.value = value; });
 const ready = ref(false);
 const guideOpen = ref(false);
 const roomOpen = ref(false);
+const contactOpen = ref(false);
+/** Operator contact for feedback, questions and proposals. */
+const CONTACT_EMAIL = "info@gutae.dev";
+const contactMail = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("こもれび神社へのご連絡")}`;
+async function copyContact() {
+  try {
+    await navigator.clipboard.writeText(CONTACT_EMAIL);
+    notify("メールアドレスをコピーしました。");
+  } catch {
+    notify(`${CONTACT_EMAIL} までご連絡ください。`);
+  }
+}
 const roomQuery = new URLSearchParams(location.search).get("room");
 const initialRoom = isPublicRoom(roomQuery) ? roomQuery : AUTO_ROOM;
 const presence = ref<Presence>({
@@ -138,6 +151,65 @@ watch(
   },
 );
 const labels = ref<SceneLabel[]>([]);
+const experience = ref<HTMLElement>();
+const labelElements = new Map<string, HTMLElement>();
+const labelSizes = new Map<string, { width: number; height: number }>();
+const placements = ref<Record<string, LabelPlacement>>({});
+// HUD pieces that place labels must never cover.
+const LABEL_BLOCKERS = [
+  ".experience-header > *",
+  ".sound-controls > *",
+  ".arrival-note",
+  ".movement-instruction > span",
+  ".interaction-dock > *",
+  ".experience-actions",
+  ".touch-controls > *",
+  ".room-panel",
+  ".shrine-guide",
+  ".contact-panel",
+  ".toast-message",
+].join(",");
+function setLabelElement(id: string, element: unknown) {
+  if (element instanceof HTMLElement) labelElements.set(id, element);
+  else labelElements.delete(id);
+}
+function onLabels(next: SceneLabel[]) {
+  labels.value = next;
+  const root = experience.value;
+  if (!root) return;
+  const origin = root.getBoundingClientRect();
+  const blockers: Box[] = [];
+  for (const element of root.querySelectorAll<HTMLElement>(LABEL_BLOCKERS)) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width && rect.height)
+      blockers.push({
+        left: rect.left - origin.left,
+        top: rect.top - origin.top,
+        right: rect.right - origin.left,
+        bottom: rect.bottom - origin.top,
+      });
+  }
+  const result = layoutLabels(
+    next.map((label) => {
+      // Hidden labels measure 0, so reuse the last real size.
+      const element = labelElements.get(label.id);
+      if (element?.offsetWidth)
+        labelSizes.set(label.id, {
+          width: element.offsetWidth,
+          height: element.offsetHeight,
+        });
+      const size = labelSizes.get(label.id) ?? { width: 90, height: 28 };
+      return {
+        ...label,
+        ...size,
+        visible: label.visible && !busy.value,
+        priority: snapshot.value.nearby === label.id,
+      };
+    }),
+    blockers,
+  );
+  placements.value = Object.fromEntries(result.map((item) => [item.id, item]));
+}
 const modal = ref<"help" | "fortune" | "ema" | null>(null);
 const fortuneAttempt = ref(0);
 const omikujiExperience = ref<InstanceType<typeof OmikujiExperience>>();
@@ -274,6 +346,7 @@ function openEma() {
 function visit(id: InteractionId) {
   selected.value = id;
   guideOpen.value = false;
+  contactOpen.value = false;
   game.value?.visit(id);
 }
 function reset() {
@@ -349,13 +422,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <main class="experience" :inert="modal !== null" aria-label="こもれび神社の散策">
+    <main ref="experience" class="experience" :inert="modal !== null" aria-label="こもれび神社の散策">
       <GameCanvas
         ref="game"
         :paused="modal !== null || !!presence.switchingTo"
         @ready="ready = true"
         @update="snapshot = $event"
-        @labels="labels = $event"
+        @labels="onLabels"
         @fortune="openFortune"
         @ema="openEma"
         @prayed="prayed"
@@ -381,6 +454,7 @@ onBeforeUnmount(() => {
             @click="
               roomOpen = !roomOpen;
               guideOpen = false;
+              contactOpen = false;
             "
           >
             <Icon name="users" :size="15" /><span>{{ connectionText }}</span>
@@ -394,6 +468,7 @@ onBeforeUnmount(() => {
             @click="
               guideOpen = !guideOpen;
               roomOpen = false;
+              contactOpen = false;
             "
           >
             <Icon name="compass" :size="20" />
@@ -409,9 +484,50 @@ onBeforeUnmount(() => {
           >
             <Icon name="help" :size="20" />
           </button>
+          <button
+            :aria-expanded="contactOpen"
+            aria-controls="contact-panel"
+            aria-label="お問い合わせ"
+            title="お問い合わせ"
+            @click="
+              contactOpen = !contactOpen;
+              guideOpen = false;
+              roomOpen = false;
+            "
+          >
+            <Icon name="mail" :size="19" />
+          </button>
         </div>
       </header>
-      <SoundControls v-show="!guideOpen && !roomOpen" :audio="audio" :sound="sound" :dismissed="guideOpen || roomOpen || modal !== null" />
+      <SoundControls v-show="!guideOpen && !roomOpen && !contactOpen" :audio="audio" :sound="sound" :dismissed="guideOpen || roomOpen || contactOpen || modal !== null" />
+      <Transition name="fade">
+        <aside
+          v-if="contactOpen"
+          id="contact-panel"
+          class="shrine-guide contact-panel glass"
+          aria-label="お問い合わせ"
+        >
+          <div class="guide-topline">
+            <span>お問い合わせ</span
+            ><button aria-label="お問い合わせを閉じる" @click="contactOpen = false">
+              <Icon name="close" :size="17" />
+            </button>
+          </div>
+          <h2>ご意見・ご連絡</h2>
+          <p>
+            改善のご意見、ご質問、ご提案やお取り組みのご相談は、こちらのメールまでお気軽にお寄せください。
+          </p>
+          <a class="contact-address" :href="contactMail">{{ CONTACT_EMAIL }}</a>
+          <div class="contact-actions">
+            <a class="contact-button" :href="contactMail"
+              ><Icon name="mail" :size="16" />メールを送る</a
+            ><button class="contact-button" type="button" @click="copyContact">
+              <Icon name="copy" :size="16" />アドレスをコピー
+            </button>
+          </div>
+          <small class="guide-footnote">内容を確認のうえ、順にお返事いたします。</small>
+        </aside>
+      </Transition>
       <Transition name="fade">
         <aside
           v-if="roomOpen"
@@ -571,11 +687,18 @@ onBeforeUnmount(() => {
       <template v-if="ready">
         <button
           v-for="label in labels"
-          v-show="label.visible && !busy"
+          v-show="label.visible && !busy && placements[label.id]?.visible !== false"
           :key="label.id"
+          :ref="(element) => setLabelElement(label.id, element)"
           class="scene-label glass"
-          :class="{ nearby: snapshot.nearby === label.id }"
-          :style="{ left: `${label.x}px`, top: `${label.y}px` }"
+          :class="{
+            nearby: snapshot.nearby === label.id,
+            lifted: (placements[label.id]?.offset ?? 0) < 0,
+          }"
+          :style="{
+            left: `${label.x}px`,
+            top: `${label.y + (placements[label.id]?.offset ?? 0)}px`,
+          }"
           :disabled="interactionBlocked || modal !== null"
           :aria-label="`${labelName(label.id)}へ向かう`"
           @click="visit(label.id as InteractionId)"

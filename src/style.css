@@ -224,6 +224,10 @@ svg {
   height: 14px;
   background: #e9e2c6aa;
 }
+/* A label lifted clear of a HUD panel would otherwise draw its line across it. */
+.scene-label.lifted:after {
+  display: none;
+}
 .scene-label:hover {
   background: #fff8e5;
   color: #9c6343;
@@ -446,6 +450,45 @@ kbd {
   display: grid;
   place-items: center;
   padding: 4px;
+}
+.contact-address {
+  display: block;
+  margin: 12px 0 14px;
+  font-family: "Noto Serif JP", serif;
+  font-size: 15px;
+  color: #8b4436;
+  text-underline-offset: 4px;
+  overflow-wrap: anywhere;
+}
+.contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.contact-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid #cecabe;
+  border-radius: 2px;
+  background: #faf8f2;
+  color: #303730;
+  font-family: "Noto Serif JP", serif;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.contact-button:hover {
+  color: #8b4436;
+  border-color: #8b4436;
+}
+.contact-button:focus-visible,
+.contact-address:focus-visible {
+  outline: 2px solid #8b4436;
+  outline-offset: 3px;
 }
 .shrine-guide h2 {
   font-family: "Noto Serif JP", serif;
@@ -1309,6 +1352,29 @@ kbd {
   }
   .movement-instruction.settled {
     top: 92px;
+  }
+}
+
+/* Phones: the footnote link (28px tall) needs its own row below the menu. */
+@media (max-width: 700px) {
+  .experience {
+    --menu-bottom: max(46px, calc(env(safe-area-inset-bottom) + 40px));
+  }
+  .experience-actions {
+    bottom: var(--menu-bottom);
+  }
+  .experience-footnote,
+  .visit-journal {
+    bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px));
+  }
+  .visit-journal {
+    height: 28px;
+  }
+  .touch-controls {
+    bottom: calc(var(--menu-bottom) + 98px);
+  }
+  .interaction-dock {
+    bottom: calc(var(--menu-bottom) + 118px);
   }
 }
 
