@@ -370,7 +370,7 @@ onBeforeUnmount(() => {
       <header class="experience-header">
         <div class="shrine-identity glass">
           <Icon name="shrine" :size="24" />
-          <div><b>こもれび神社</b><span>木漏れ日の中で、ひと休み</span></div>
+          <div><h1>こもれび神社</h1><span>木漏れ日の中で、ひと休み</span></div>
           <span class="identity-divider"></span
           ><button
             class="presence-toggle"
@@ -695,6 +695,7 @@ onBeforeUnmount(() => {
             ><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd
             ><kbd>D</kbd> または矢印キーでも歩けます</span
           ><span class="mobile-instruction">どうぞ、ごゆっくり。</span>
+          <a class="about-link" href="/about">神社について</a>
         </div>
         <div class="visit-journal">
           <Icon name="leaf" :size="14" /><span>小さな思い出</span>
@@ -704,6 +705,7 @@ onBeforeUnmount(() => {
       <div v-else class="loading-overlay">
         <Icon name="shrine" :size="38" />
         <p>木々の向こうに、境内をひらいています…</p>
+        <a class="loading-about-link" href="/about">こもれび神社について</a>
       </div>
       <Transition name="toast"
         ><div v-if="toast" class="toast-message glass" role="status">
@@ -755,6 +757,7 @@ onBeforeUnmount(() => {
               <p class="modal-intro">
                 参道を歩き、拝殿へ。<br />どうぞ、ご自由にお過ごしください。
               </p>
+              <p class="help-about"><a href="/about">こもれび神社の紹介と体験のご案内</a></p>
               <div class="help-list">
                 <div>
                   <span>01</span>

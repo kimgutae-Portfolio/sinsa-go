@@ -419,11 +419,10 @@ describe("authenticated administrator API", () => {
       body: JSON.stringify({ password }),
     });
     expect(response.status).toBe(503);
-    expect(
-      (await fetch(base + "/data/admin-password.txt")).headers.get(
-        "content-type",
-      ),
-    ).not.toContain("text/plain");
+    const missingSecret = await fetch(base + "/data/admin-password.txt");
+    expect(missingSecret.status).toBe(404);
+    expect(missingSecret.headers.get("x-robots-tag")).toContain("noindex");
+    expect(await missingSecret.text()).not.toContain(password);
   });
   it("takes an ema down only with a valid CSRF token", async () => {
     const { cookie, session } = await login();

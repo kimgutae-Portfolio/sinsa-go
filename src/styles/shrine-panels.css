@@ -451,7 +451,7 @@
 @media (max-width: 380px) {
   .experience-header { gap: 8px; }
   .experience .shrine-identity { padding: 10px 9px; gap: 7px; }
-  .experience .shrine-identity b { font-size: 12px; letter-spacing: .07em; white-space: nowrap; }
+  .experience .shrine-identity h1 { font-size: 12px; letter-spacing: .07em; white-space: nowrap; }
   .experience .shrine-identity div > span { display: none; }
   .experience .shrine-identity > svg { width: 16px; }
   .experience .presence-toggle > svg { display: none; }

@@ -76,18 +76,21 @@ afterEach(async () => {
   directory = undefined;
 });
 describe("crawler HTTP responses", () => {
-  it("serves the finished card and icon files with valid MIME types and no JS-dependent metadata", async () => {
+  const files: Record<string, string> = {
+    [SITE.image]: 'image/jpeg', '/favicon.ico': 'image/vnd.microsoft.icon',
+    '/icons/favicon-96.png': 'image/png', '/apple-touch-icon.png': 'image/png',
+    '/site.webmanifest': 'application/manifest+json',
+  };
+  async function startFixture() {
     directory = await mkdtemp(join(tmpdir(), 'shrine-sharing-'));
-    const files: Record<string, string> = {
-      [SITE.image]: 'image/jpeg', '/favicon.ico': 'image/vnd.microsoft.icon',
-      '/icons/favicon-96.png': 'image/png', '/apple-touch-icon.png': 'image/png',
-      '/site.webmanifest': 'application/manifest+json',
-    };
     for (const path of Object.keys(files)) {
       await mkdir(dirname(join(directory, path)), { recursive: true });
       await copyFile(resolve('public', `.${path}`), join(directory, path));
     }
     await writeFile(join(directory, 'index.html'), `<!doctype html><html lang="ja"><head>${siteMetadata(SITE.origin)}</head><body></body></html>`);
+    await mkdir(join(directory, 'about'));
+    await writeFile(join(directory, 'about', 'index.html'), '<!doctype html><html lang="ja"><head><title>こもれび神社について</title></head><body><h1>森の中で、ひと休み。</h1><p>ブラウザーで参拝やおみくじを体験できます。</p><a href="/">境内に戻る</a></body></html>');
+    await writeFile(join(directory, 'google-site-verification.html'), 'google-site-verification: fixture');
     const crawl = crawlFiles(SITE.origin);
     await writeFile(join(directory,'robots.txt'), crawl.robots);
     await writeFile(join(directory,'sitemap.xml'), crawl.sitemap);
@@ -98,7 +101,10 @@ describe("crawler HTTP responses", () => {
     });
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test socket');
-    const origin = `http://127.0.0.1:${address.port}`;
+    return `http://127.0.0.1:${address.port}`;
+  }
+  it("serves the finished card and icon files with valid MIME types and no JS-dependent metadata", async () => {
+    const origin = await startFixture();
     const publicPage = await fetch(origin, { headers: { 'User-Agent': 'Twitterbot/1.0' } });
     expect(publicPage.headers.get('cache-control')).not.toContain('no-transform');
     const html = await publicPage.text();
@@ -123,5 +129,74 @@ describe("crawler HTTP responses", () => {
     const sitemap = await fetch(origin + '/sitemap.xml');
     expect(sitemap.headers.get('content-type')).toContain('application/xml');
     expect(await sitemap.text()).toContain(SITE.origin);
+  });
+
+  it("serves the about article directly and redirects alternate document URLs without losing queries", async () => {
+    const origin = await startFixture();
+    const about = await fetch(origin + '/about');
+    expect(about.status).toBe(200);
+    expect(about.headers.get('content-type')).toContain('text/html');
+    expect(about.headers.get('x-robots-tag')).toBeNull();
+    expect(await about.text()).toContain('<h1>森の中で、ひと休み。</h1>');
+    for (const [path, destination] of [
+      ['/index.html', '/'], ['/about/', '/about'], ['/about/index.html', '/about'], ['/admin/', '/admin'],
+    ]) for (const method of ['GET', 'HEAD']) {
+      const response = await fetch(origin + path + '?room=komorebi&from=guide', { method, redirect: 'manual' });
+      expect(response.status).toBe(308);
+      expect(response.headers.get('location')).toBe(destination + '?room=komorebi&from=guide');
+      expect(await response.text()).toBe('');
+    }
+    const room = await fetch(origin + '/?room=komorebi', { redirect: 'manual' });
+    expect(room.status).toBe(200);
+    expect(await room.text()).toContain('rel="canonical" href="https://komorebi-jinja.com/"');
+  });
+
+  it("returns real noindex 404s for unknown pages and missing assets instead of the game shell", async () => {
+    const origin = await startFixture();
+    for (const path of ['/not-a-shrine-page', '/not-a-shrine-page/', '/missing.html', '/administrator']) {
+      const response = await fetch(origin + path, { headers: { Accept: 'text/html' } });
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toContain('text/html');
+      expect(response.headers.get('x-robots-tag')).toContain('noindex');
+      const html = await response.text();
+      expect(html).toContain('ページが見つかりません');
+      expect(html).toContain('href="/"');
+      expect(html).toContain('href="/about"');
+      expect(html).not.toContain('rel="canonical"');
+      const head = await fetch(origin + path, { method: 'HEAD', headers: { Accept: 'text/html' } });
+      expect(head.status).toBe(404);
+      expect(head.headers.get('content-length')).toBe(response.headers.get('content-length'));
+      expect(await head.text()).toBe('');
+    }
+    for (const path of ['/assets/missing.js', '/textures/missing.webp', '/admin/missing.js']) {
+      const response = await fetch(origin + path);
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toContain('text/plain');
+      expect(response.headers.get('x-robots-tag')).toContain('noindex');
+      expect(await response.text()).not.toContain('<html');
+    }
+  });
+
+  it("preserves real verification files and useful HEAD responses", async () => {
+    const origin = await startFixture();
+    const verification = await fetch(origin + '/google-site-verification.html');
+    expect(verification.status).toBe(200);
+    expect(await verification.text()).toBe('google-site-verification: fixture');
+    for (const path of ['/', '/about', '/admin', '/favicon.ico']) {
+      const response = await fetch(origin + path);
+      const head = await fetch(origin + path, { method: 'HEAD' });
+      expect(head.status).toBe(200);
+      expect(head.headers.get('content-length')).toBe(response.headers.get('content-length'));
+      expect(await head.text()).toBe('');
+      await response.arrayBuffer();
+    }
+    const health = await fetch(origin + '/health', { method: 'HEAD' });
+    expect(health.status).toBe(200);
+    expect(health.headers.get('x-robots-tag')).toContain('noindex');
+    expect(await health.text()).toBe('');
+    const realtime = await fetch(origin + '/realtime', { method: 'HEAD' });
+    expect(realtime.status).toBe(426);
+    expect(realtime.headers.get('x-robots-tag')).toContain('noindex');
+    expect(await realtime.text()).toBe('');
   });
 });

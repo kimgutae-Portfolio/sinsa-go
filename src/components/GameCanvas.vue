@@ -90,6 +90,7 @@ defineExpose({
       <span>境内への道で、少し立ち止まっています。</span>
       <p>{{ error }}</p>
       <button class="primary-button" @click="reload">もう一度ひらく</button>
+      <a class="loading-about-link" href="/about">神社の紹介と遊び方を読む</a>
     </div>
   </div>
 </template>

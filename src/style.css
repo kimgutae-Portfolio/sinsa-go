@@ -105,7 +105,8 @@ svg {
 .shrine-identity > svg {
   color: #a06443;
 }
-.shrine-identity b {
+.shrine-identity h1 {
+  margin: 0;
   display: block;
   font-family: "Noto Serif JP", serif;
   font-size: 17px;
@@ -349,7 +350,30 @@ svg {
   color: #f1f0dc;
   text-shadow: 0 1px 4px #30432966;
   letter-spacing: 0.015em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
+.experience-footnote .about-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid #dad5c8;
+  border-radius: 2px;
+  background: #f4f1e9e8;
+  color: #3e4b3e;
+  font-family: "Noto Serif JP", serif;
+  font-size: 10px;
+  text-decoration: none;
+  text-shadow: none;
+  pointer-events: auto;
+}
+.experience-footnote .about-link:hover { color: #8b4436; }
+.about-link:focus-visible, .help-about a:focus-visible { outline: 2px solid #8b4436; outline-offset: 3px; }
+.help-about a { color: #8b4436; text-underline-offset: 3px; }
+.loading-about-link { color: #8b4436; font-size: 12px; text-underline-offset: 3px; pointer-events: auto; }
+.canvas-error .loading-about-link { display: inline-block; margin-top: 16px; line-height: 2; }
 .experience-footnote .desktop-instruction {
   display: flex;
   align-items: center;
@@ -1001,7 +1025,7 @@ kbd {
     padding: 10px 14px;
     gap: 9px;
   }
-  .shrine-identity b {
+  .shrine-identity h1 {
     font-size: 14px;
   }
   .shrine-identity > svg {
