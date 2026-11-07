@@ -5,6 +5,7 @@ import {
   LANTERN_PRODUCTS,
   MAX_WISH_LENGTH,
   MAX_SIGNATURE_LENGTH,
+  cleanLanternText,
   lanternProduct,
   type LanternState,
 } from "../shared/lanterns";
@@ -48,16 +49,39 @@ const writing = computed(() => !selected.value && !props.state.ownLantern && !mi
 const design = computed(() =>
   lanternProduct(selected.value?.productId ?? productId.value)!,
 );
-const previewText = computed(() =>
-  selected.value ? selected.value.wish : wish.value.trim(),
-);
+const segmenter = typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter("ja", { granularity: "grapheme" })
+  : null;
+function inscriptionColumns(value: string, limit: number) {
+  const text = cleanLanternText(value, Infinity) ?? "";
+  const glyphs = segmenter
+    ? Array.from(segmenter.segment(text), ({ segment }) => segment)
+    : Array.from(text);
+  const columns: string[][] = [];
+  let length = 0;
+  for (const glyph of glyphs) {
+    length += Array.from(glyph).length;
+    if (length > limit) break;
+    const last = columns.at(-1);
+    if (last && last.length < 6) last.push(glyph);
+    else columns.push([glyph]);
+  }
+  return columns;
+}
+const previewWish = computed(() => {
+  const columns = inscriptionColumns(selected.value?.wish ?? wish.value, MAX_WISH_LENGTH);
+  return columns.length ? columns : [Array.from("願いごと")];
+});
 const previewName = computed(() =>
-  selected.value ? selected.value.signature : signature.value.trim(),
+  inscriptionColumns(selected.value?.signature ?? signature.value, MAX_SIGNATURE_LENGTH),
 );
 const count = computed(() => Array.from(wish.value).length);
-const problem = computed(
-  () => wishProblem(wish.value) ?? wishProblem(signature.value),
-);
+const signatureCount = computed(() => Array.from(signature.value).length);
+const problem = computed(() => {
+  if (count.value > MAX_WISH_LENGTH) return `願いごとは${MAX_WISH_LENGTH}文字までです。`;
+  if (signatureCount.value > MAX_SIGNATURE_LENGTH) return `お名前は${MAX_SIGNATURE_LENGTH}文字までです。`;
+  return wishProblem(wish.value) ?? wishProblem(signature.value);
+});
 const freeSlot = computed(
   () =>
     Array.from({ length: props.state.policy.capacity }, (_, i) => i).find(
@@ -163,10 +187,18 @@ async function report() {
           <span class="ema-cord"></span>
           <div class="ema-plaque">
             <span class="ema-picture">願</span>
-            <p class="ema-writing">
-              {{ previewText || "願いごと" }}
-            </p>
-            <small v-if="previewName" class="ema-name">{{ previewName }}</small>
+            <div class="ema-inscription">
+              <p class="ema-writing">
+                <span v-for="(column, index) in previewWish" :key="index" class="ema-text-column">
+                  <span v-for="(glyph, row) in column" :key="row">{{ glyph }}</span>
+                </span>
+              </p>
+              <small v-if="previewName.length" class="ema-name">
+                <span v-for="(column, index) in previewName" :key="index" class="ema-text-column">
+                  <span v-for="(glyph, row) in column" :key="row">{{ glyph }}</span>
+                </span>
+              </small>
+            </div>
           </div>
         </div>
         <div class="lantern-board-heading">
@@ -326,13 +358,14 @@ async function report() {
             :aria-invalid="Boolean(problem)"
             aria-describedby="ema-public-note ema-problem"
           ></textarea>
-          <label for="ema-signature">お名前 <small>任意</small></label
+          <label for="ema-signature">お名前 <small>任意 · {{ signatureCount }} / {{ MAX_SIGNATURE_LENGTH }}</small></label
           ><input
             id="ema-signature"
             v-model="signature"
-            :maxlength="MAX_SIGNATURE_LENGTH"
+            :maxlength="MAX_SIGNATURE_LENGTH * 2"
             placeholder="省略できます"
             :disabled="busy"
+            :aria-invalid="signatureCount > MAX_SIGNATURE_LENGTH"
             autocomplete="off"
           />
           <p v-if="problem" id="ema-problem" class="ema-problem" role="alert">
@@ -357,7 +390,6 @@ async function report() {
               Boolean(state.ownLantern) ||
               !consent ||
               !wish.trim() ||
-              count > MAX_WISH_LENGTH ||
               Boolean(problem) ||
               selectedSlot === null
             "
