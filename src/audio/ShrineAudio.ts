@@ -1,6 +1,5 @@
 import { createOmikujiSound } from "./OmikujiSound";
 import { createTemizuSound } from "./TemizuSound";
-import { createOfferingSound } from "./OfferingSound";
 import { TEMIZU_DURATION } from "../game/ritual";
 
 export type SoundState = "off" | "loading" | "playing" | "paused" | "blocked" | "error";
@@ -155,10 +154,6 @@ export class ShrineAudio {
   /** Called by the draw gesture; a closed dialog must cancel even a pending resume. */
   playOmikujiDraw(reducedMotion = false): () => void {
     return this.playEffect(`omikuji-${reducedMotion}`, rate => createOmikujiSound(rate, reducedMotion));
-  }
-  /** An optional local coin gesture; this never represents a completed payment. */
-  playOffering(reducedMotion = false): () => void {
-    return this.playEffect(`offering-${reducedMotion}`, rate => createOfferingSound(rate, reducedMotion));
   }
   /** Joining midway uses the ritual's elapsed time, including after pause or mute. */
   playTemizu(elapsed = 0): () => void {

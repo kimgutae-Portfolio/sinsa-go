@@ -25,29 +25,6 @@
 .experience :is(.interact-button, .walking-to, .ritual-card) { border-radius: 3px; }
 .experience .ritual-track > span { background: var(--shrine-red); }
 .experience .ritual-heading { color: var(--shrine-ink); }
-.nearby-actions { display: flex; align-items: stretch; gap: 8px; }
-.experience .saisen-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-height: 46px;
-  padding: 9px 16px;
-  border-radius: 3px;
-  font-family: var(--shrine-mincho);
-  font-size: 13px;
-  letter-spacing: .06em;
-}
-.saisen-trigger > svg { color: #987436; flex: 0 0 auto; }
-.saisen-trigger > span { display: grid; gap: 2px; text-align: left; }
-.saisen-trigger small { font-family: var(--shrine-body); font-size: 9px; letter-spacing: .02em; color: var(--shrine-secondary); }
-.experience .saisen-trigger:hover:not(:disabled) { background: #eae3d3; }
-.saisen-trigger:disabled { opacity: .5; cursor: default; }
-@media (max-width: 360px) {
-  .experience .interaction-dock:has(.saisen-trigger) {
-    bottom: calc(var(--menu-bottom) + 186px);
-  }
-}
 /* A smaller traveler needs the center kept clear while hands and ladle move. */
 .experience .interaction-dock:has(.ritual-card) {
   top: 150px;
@@ -427,9 +404,6 @@
 }
 
 @media (max-width: 700px) {
-  .nearby-actions { flex-direction: column; gap: 7px; }
-  .experience .saisen-trigger { width: 100%; min-height: 42px; padding: 8px 14px; }
-  .saisen-trigger > span { display: flex; align-items: baseline; gap: 10px; }
   .experience .interaction-dock:has(.ritual-card) {
     top: 142px;
     right: 17px;
