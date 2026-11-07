@@ -23,6 +23,7 @@ const paths: Record<string, string> = {
   ema: "m4 8 8-5 8 5v12H4V8Zm8-5v6m-5 4h10m-8 3h6",
   mail: "M3 6h18v12H3V6Zm0 0 9 7 9-7",
   copy: "M9 9h11v11H9V9ZM5 15H4V4h11v1",
+  coin: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0M8 6l1 1m6-1-1 1M8 18l1-1m6 1-1-1",
   water:
     "M3 9h11a3 3 0 0 0 3-3V4m0 0h4M17 4v2M5 9c0 3 2 5 6 5s6-2 6-5M8 18c0 1.7 1.3 3 3 3s3-1.3 3-3c0-2-3-5-3-5s-3 3-3 5Z",
   flag: "M5 21V4m0 0h11l-2 4 2 4H5",

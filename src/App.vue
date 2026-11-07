@@ -6,6 +6,8 @@ import Icon from "./components/Icon.vue";
 import SoundControls from "./components/SoundControls.vue";
 import EmaPanel from "./components/EmaPanel.vue";
 import OmikujiExperience from "./components/OmikujiExperience.vue";
+import OfferingExperience from "./components/OfferingExperience.vue";
+import { OFUSE_SUPPORT_URL } from "./shared/support";
 import { ShrineAudio, type SoundSnapshot } from "./audio/ShrineAudio";
 import { FREE_LANTERN_POLICY, type LanternState } from "./shared/lanterns";
 import type { VisitorSummary } from "./shared/visitorStats";
@@ -210,9 +212,10 @@ function onLabels(next: SceneLabel[]) {
   );
   placements.value = Object.fromEntries(result.map((item) => [item.id, item]));
 }
-const modal = ref<"help" | "fortune" | "ema" | null>(null);
+const modal = ref<"help" | "fortune" | "ema" | "offering" | null>(null);
 const fortuneAttempt = ref(0);
 const omikujiExperience = ref<InstanceType<typeof OmikujiExperience>>();
+const offeringExperience = ref<InstanceType<typeof OfferingExperience>>();
 const visited = ref<InteractionId[]>([]);
 const selected = ref<InteractionId>("temizu");
 const toast = ref("");
@@ -343,6 +346,13 @@ function openEma() {
   modal.value = "ema";
   markVisited("ema");
 }
+function openOffering() {
+  if (!ready.value || interactionBlocked.value || snapshot.value.nearby !== "offering") return;
+  guideOpen.value = false;
+  roomOpen.value = false;
+  contactOpen.value = false;
+  modal.value = "offering";
+}
 function visit(id: InteractionId) {
   selected.value = id;
   guideOpen.value = false;
@@ -385,6 +395,7 @@ function onDialogKey(event: KeyboardEvent) {
 }
 watch(modal, async (value, oldValue) => {
   if (oldValue === "fortune" && value !== "fortune") omikujiExperience.value?.cancel();
+  if (oldValue === "offering" && value !== "offering") offeringExperience.value?.cancel();
   if (value) {
     if (!oldValue) previousFocus = document.activeElement as HTMLElement | null;
   }
@@ -393,11 +404,16 @@ watch(modal, async (value, oldValue) => {
   if (value) {
     const target = value === "fortune"
       ? dialog.value?.querySelector<HTMLElement>("[data-omikuji-initial-focus], .fortune-slip-content") ?? dialog.value
-      : dialog.value;
+      : value === "offering"
+        ? dialog.value?.querySelector<HTMLElement>("[data-offering-initial-focus]") ?? dialog.value
+        : dialog.value;
     target?.focus();
   }
   else if (previousFocus?.isConnected) previousFocus.focus();
-  else document.querySelector<HTMLButtonElement>(".help-button")?.focus();
+  else {
+    const fallback = oldValue === "offering" ? ".saisen-trigger, [data-place='offering']" : ".help-button";
+    experience.value?.querySelector<HTMLButtonElement>(fallback)?.focus();
+  }
 });
 // Escape still closes the dialog when focus fell back to the page (e.g. a form unmounted).
 function onWindowKey(event: KeyboardEvent) {
@@ -747,21 +763,33 @@ onBeforeUnmount(() => {
                 ></span>
               </div>
             </div>
-            <button
+            <div
               v-else-if="snapshot.nearby && !snapshot.destination"
-              class="interact-button glass"
+              class="nearby-actions"
               key="nearby"
-              :disabled="interactionBlocked"
-              @click="game?.interact()"
             >
-              <Icon
-                :name="
-                  places.find((p) => p.id === snapshot.nearby)?.icon ?? 'shrine'
-                "
-                :size="19"
-              /><span>{{ interactionText }}</span
-              ><kbd>E</kbd>
-            </button>
+              <button
+                class="interact-button glass"
+                :disabled="interactionBlocked"
+                @click="game?.interact()"
+              >
+                <Icon
+                  :name="places.find((p) => p.id === snapshot.nearby)?.icon ?? 'shrine'"
+                  :size="19"
+                /><span>{{ interactionText }}</span><kbd>E</kbd>
+              </button>
+              <button
+                v-if="snapshot.nearby === 'offering'"
+                type="button"
+                class="saisen-trigger glass"
+                :disabled="interactionBlocked"
+                aria-label="お賽銭でこもれび神社を応援する"
+                @click="openOffering"
+              >
+                <Icon name="coin" :size="23" />
+                <span>お賽銭<small>OFUSEで応援</small></span>
+              </button>
+            </div>
             <div
               v-else-if="snapshot.destination"
               class="walking-to glass"
@@ -780,6 +808,7 @@ onBeforeUnmount(() => {
           <button
             v-for="place in places"
             :key="place.id"
+            :data-place="place.id"
             :disabled="interactionBlocked || modal !== null"
             :class="{
               active:
@@ -847,6 +876,7 @@ onBeforeUnmount(() => {
             :class="{
               'fortune-dialog': modal === 'fortune',
               'lantern-dialog': modal === 'ema',
+              'offering-dialog': modal === 'offering',
             }"
             role="dialog"
             aria-modal="true"
@@ -909,6 +939,13 @@ onBeforeUnmount(() => {
                 境内に戻る<Icon name="arrow" :size="18" />
               </button>
             </template>
+            <OfferingExperience
+              v-else-if="modal === 'offering'"
+              ref="offeringExperience"
+              :href="OFUSE_SUPPORT_URL"
+              :audio="audio"
+              @close="modal = null"
+            />
             <OmikujiExperience
               v-else-if="modal === 'fortune'"
               :key="fortuneAttempt"
