@@ -1,0 +1,26 @@
+# Deploys the shrine to Fly.io (Tokyo) whenever main is pushed.
+# Needs the repository secret FLY_API_TOKEN (create it with `fly tokens create deploy`).
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits for the running one instead of racing it.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # The Docker build runs `npm run build` (type check included), so a broken build never ships.
+      # --ha=false keeps a single machine: rooms live in memory and must not be split.
+      - run: flyctl deploy --remote-only --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
