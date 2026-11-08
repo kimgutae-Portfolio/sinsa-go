@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import Icon from "./Icon.vue";
 import {
   LANTERN_PRODUCTS,
@@ -104,6 +104,17 @@ watch(
   { immediate: true },
 );
 watch(selectedSlot, () => (confirmReport.value = false));
+const writingColumn = ref<HTMLElement | null>(null);
+/** On phones the slot board sits below the card, so bring the chosen wish (or the form) into view. */
+function chooseSlot(slot: number) {
+  selectedSlot.value = slot;
+  feedback.value = "";
+  if (!window.matchMedia("(max-width: 700px)").matches) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  void nextTick(() =>
+    writingColumn.value?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" }),
+  );
+}
 function date(value: number) {
   return new Intl.DateTimeFormat("ja-JP", {
     timeZone: "Asia/Tokyo",
@@ -222,19 +233,16 @@ async function report() {
             }"
             :aria-label="`${slot}番の場所 ${state.lanterns.some((item) => item.slot === slot - 1) ? '願いを読む' : '選ぶ'}`"
             :aria-pressed="selectedSlot === slot - 1"
-            @click="
-              selectedSlot = slot - 1;
-              feedback = '';
-            "
+            @click="chooseSlot(slot - 1)"
           >
             <Icon name="ema" :size="16" />
           </button>
         </div>
         <small class="lantern-board-note"
-          >掛かっている絵馬を選ぶと、その願いを読めます。<br />空いた場所にご自身の絵馬を掛けられます。</small
+          >掛かっている絵馬を選ぶと、その願いを読めます。<br />空いている場所が選ばれています。お好きな場所に変えることもできます。</small
         >
       </div>
-      <div class="lantern-writing-column">
+      <div ref="writingColumn" class="lantern-writing-column">
         <div v-if="!connected" class="lantern-feedback" role="status">
           境内につながると、絵馬を掛けたり外したりできます。
         </div>
@@ -276,7 +284,7 @@ async function report() {
               v-if="!state.ownLantern && !mine && freeSlot !== null && open"
               type="button"
               class="lantern-text-button"
-              @click="selectedSlot = freeSlot"
+              @click="chooseSlot(freeSlot)"
             >
               私も絵馬を書く <Icon name="arrow" :size="14" />
             </button>

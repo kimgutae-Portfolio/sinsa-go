@@ -507,7 +507,16 @@
 .lantern-designs:has(> button:nth-child(3):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lantern-designs button i { border-radius: 1px; clip-path: polygon(0 28%, 50% 0, 100% 28%, 100% 100%, 0 100%); }
 @media (max-width: 700px) {
-  .ema-panel .lantern-preview-column { display: block; }
-  .ema-panel .ema-preview { height: 150px; transform: scale(.78); transform-origin: top center; margin-bottom: -4px; }
-  .ema-panel .lantern-slot-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  /* Phones: the writing form follows the small preview directly; the slot board
+     (an empty slot is already chosen) moves below it, so nothing to fill in hides below the fold. */
+  .ema-panel .lantern-content { display: flex; flex-direction: column; gap: 0; }
+  .ema-panel .lantern-preview-column { display: contents; }
+  .ema-panel .ema-preview { order: 0; transform: scale(.5); transform-origin: top center; margin-bottom: -94px; }
+  .ema-panel .lantern-writing-column { order: 1; scroll-margin-top: 12px; }
+  .ema-panel .lantern-board-heading { order: 2; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--shrine-line); }
+  .ema-panel .lantern-slot-grid { order: 3; grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .ema-panel .lantern-board-note { order: 4; }
+  .ema-panel .lantern-intro { margin-bottom: 10px; }
+  .ema-panel .lantern-policy { margin-bottom: 14px; padding-bottom: 12px; }
+  .ema-panel .lantern-form textarea { min-height: 92px; }
 }
